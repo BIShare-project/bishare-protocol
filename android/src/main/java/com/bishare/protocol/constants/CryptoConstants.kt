@@ -8,10 +8,6 @@ object BIShareCrypto {
     const val E2E_SALT = "BIShare-E2E"
     const val E2E_INFO = "file-transfer"
 
-    // Remote Transfer (symmetric key from share code)
-    const val REMOTE_SALT = "BIShare-Remote"
-    const val REMOTE_INFO = "remote-transfer-v2"
-
     // AES-256-GCM Parameters
     /** AES key size in bytes (256 bits) */
     const val AES_KEY_SIZE = 32

@@ -51,22 +51,6 @@ public final class BIShareEncryption: @unchecked Sendable {
         )
     }
 
-    // MARK: - Remote Key Derivation (from share code)
-
-    /// Derive a symmetric key from a remote transfer share code using HKDF.
-    /// - Parameter shareCode: The full share code string (16 characters).
-    /// - Returns: A `SymmetricKey` for AES-256-GCM, or `nil` if code is too short.
-    public static func deriveRemoteKey(from shareCode: String) -> SymmetricKey? {
-        let codeData = Data(shareCode.utf8)
-        guard codeData.count >= BIShareConfig.remoteCodeLength else { return nil }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: codeData),
-            salt: Data(BIShareCrypto.remoteSalt.utf8),
-            info: Data(BIShareCrypto.remoteInfo.utf8),
-            outputByteCount: BIShareCrypto.aesKeySize
-        )
-    }
-
     // MARK: - AES-256-GCM Encrypt / Decrypt
 
     /// Encrypt data with AES-256-GCM.

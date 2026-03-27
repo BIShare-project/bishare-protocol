@@ -73,23 +73,6 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
 
     companion object {
 
-        // MARK: - Remote Key Derivation
-
-        /**
-         * Derive a symmetric key from a remote transfer share code using HKDF.
-         * @param shareCode The full share code string (16 characters).
-         * @return 32-byte AES key, or null if code is too short.
-         */
-        fun deriveRemoteKey(shareCode: String): ByteArray? {
-            if (shareCode.length < BIShareConfig.REMOTE_CODE_LENGTH) return null
-            return hkdfDerive(
-                shareCode.toByteArray(),
-                BIShareCrypto.REMOTE_SALT.toByteArray(),
-                BIShareCrypto.REMOTE_INFO.toByteArray(),
-                BIShareCrypto.AES_KEY_SIZE
-            )
-        }
-
         // MARK: - AES-256-GCM
 
         /**

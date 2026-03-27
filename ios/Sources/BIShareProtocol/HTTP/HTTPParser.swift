@@ -11,6 +11,10 @@ public enum HTTPParser {
 
     /// Parse raw bytes into an HTTPRequest.
     /// Returns `.needMoreData` if the full request hasn't arrived yet.
+    ///
+    /// For upload requests with large bodies (>10MB), returns `.complete` as soon as headers
+    /// are parsed with whatever body data is already available. This prevents buffering
+    /// the entire file in memory. The caller (TransferServer) streams the rest from the connection.
     public static func parse(_ data: Data) -> ParseResult {
         guard let headerEnd = findHeaderEnd(in: data) else {
             return .needMoreData
@@ -51,6 +55,14 @@ public enum HTTPParser {
 
         if contentLength > 0 {
             let availableBody = data.count - bodyStart
+
+            // Large upload (>10MB): return immediately with partial body.
+            // Caller streams the rest directly from the connection to disk.
+            if contentLength > 10_000_000 {
+                let body = availableBody > 0 ? data[bodyStart..<data.count] : Data()
+                return .complete(HTTPRequest(method: method, path: path, queryItems: queryItems, headers: headers, body: Data(body)))
+            }
+
             if availableBody < contentLength {
                 return .needMoreData
             }

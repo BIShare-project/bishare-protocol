@@ -11,24 +11,13 @@ public enum BIShareConfig {
 
     /// URL scheme for local transfers
     public static let scheme = "bishare"
-    /// URL scheme for remote transfers
-    public static let remoteScheme = "bishare-remote"
 
     // MARK: - Code Generation
 
-    /// Character set for room codes and remote codes (no I, O, 0, 1)
+    /// Character set for room codes (no I, O, 0, 1)
     public static let codeCharset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     /// Room code length
     public static let roomCodeLength = 4
-    /// Remote transfer lookup code length
-    public static let remoteCodeLength = 6
-    /// Remote transfer full code length (includes encryption key material)
-    public static let remoteFullLength = 16
-
-    // MARK: - Relay
-
-    /// Cloudflare Workers relay base URL
-    public static let relayBaseURL = "https://bishare-relay.cakrabudiman.workers.dev"
 
     // MARK: - Limits
 
@@ -42,8 +31,4 @@ public enum BIShareConfig {
     public static let acceptRejectTimeout: TimeInterval = 30.0
     /// Device considered stale after this many seconds without being seen
     public static let staleDeviceTimeout: TimeInterval = 15.0
-    /// Maximum file size for remote transfer (500 MB)
-    public static let remoteFileMaxSize = 500 * 1024 * 1024
-    /// Remote transfer expiry in hours
-    public static let remoteExpiryHours = 24
 }

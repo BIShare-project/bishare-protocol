@@ -9,13 +9,6 @@ public enum BIShareCrypto {
     /// HKDF info for local E2E file transfer
     public static let e2eInfo = "file-transfer"
 
-    // MARK: - Remote Transfer (symmetric key from share code)
-
-    /// HKDF salt for remote transfer via relay
-    public static let remoteSalt = "BIShare-Remote"
-    /// HKDF info for remote transfer via relay
-    public static let remoteInfo = "remote-transfer-v2"
-
     // MARK: - AES-256-GCM Parameters
 
     /// AES key size in bytes (256 bits)
