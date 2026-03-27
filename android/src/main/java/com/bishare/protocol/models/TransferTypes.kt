@@ -8,7 +8,8 @@ data class PrepareRequest(
 data class PrepareResponse(
     val sessionId: String,
     val files: Map<String, String>,
-    val publicKey: String? = null
+    val publicKey: String? = null,
+    val maxConcurrent: Int? = null
 )
 
 data class UploadResponse(

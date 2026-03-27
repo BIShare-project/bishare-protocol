@@ -31,4 +31,16 @@ public enum BIShareConfig {
     public static let acceptRejectTimeout: TimeInterval = 30.0
     /// Device considered stale after this many seconds without being seen
     public static let staleDeviceTimeout: TimeInterval = 15.0
+
+    // MARK: - Parallel Transfer
+
+    /// Default max concurrent file uploads allowed by server
+    public static let defaultMaxConcurrent = 4
+
+    // MARK: - Binary Protocol
+
+    /// Protocol version that supports binary transfer (version negotiation)
+    public static let binaryProtocolMinVersion = "2.1"
+    /// Port offset for binary protocol (main port + 2)
+    public static let binaryPortOffset: UInt16 = 2
 }

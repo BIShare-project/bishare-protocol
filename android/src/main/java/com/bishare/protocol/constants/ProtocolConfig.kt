@@ -22,4 +22,14 @@ object BIShareConfig {
     const val CLIPBOARD_POLL_INTERVAL_MS = 2000L
     const val ACCEPT_REJECT_TIMEOUT_MS = 30_000L
     const val STALE_DEVICE_TIMEOUT_MS = 15_000L
+
+    // Parallel Transfer
+    /** Default max concurrent file uploads allowed by server */
+    const val DEFAULT_MAX_CONCURRENT = 4
+
+    // Binary Protocol
+    /** Protocol version that supports binary transfer */
+    const val BINARY_PROTOCOL_MIN_VERSION = "2.1"
+    /** Port offset for binary protocol (main port + 2) */
+    const val BINARY_PORT_OFFSET = 2
 }
