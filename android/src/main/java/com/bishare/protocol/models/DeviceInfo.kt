@@ -13,5 +13,6 @@ data class DeviceInfo(
     val port: Int = BISharePort.MAIN,
     @SerializedName("protocol") val protocol_: String = BIShareConfig.PROTOCOL_SCHEME,
     val download: Boolean = false,
-    val publicKey: String? = null
+    val publicKey: String? = null,
+    val supportsBinary: Boolean? = true
 )

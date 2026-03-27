@@ -16,11 +16,13 @@ public struct PrepareResponse: Codable, Sendable {
     public let sessionId: String
     public let files: [String: String]
     public let publicKey: String?
+    public let maxConcurrent: Int?
 
-    public init(sessionId: String, files: [String: String], publicKey: String? = nil) {
+    public init(sessionId: String, files: [String: String], publicKey: String? = nil, maxConcurrent: Int? = nil) {
         self.sessionId = sessionId
         self.files = files
         self.publicKey = publicKey
+        self.maxConcurrent = maxConcurrent
     }
 }
 
