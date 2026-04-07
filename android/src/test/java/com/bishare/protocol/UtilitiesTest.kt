@@ -71,29 +71,12 @@ class UtilitiesTest {
     }
 
     @Test
-    fun remoteCodeLength() {
-        val code = CodeGenerator.generateRemoteCode()
-        assertEquals(BIShareConfig.REMOTE_CODE_LENGTH, code.length)
-    }
-
-    @Test
-    fun remoteFullCodeLength() {
-        val code = CodeGenerator.generateRemoteFullCode()
-        assertEquals(BIShareConfig.REMOTE_FULL_LENGTH, code.length)
-    }
-
-    @Test
     fun codeCharsetOnly() {
-        val code = CodeGenerator.generateRemoteFullCode()
+        val code = CodeGenerator.generateRoomCode()
         val charset = BIShareConfig.CODE_CHARSET
         for (char in code) {
             assertTrue("Code contains invalid character: $char", charset.contains(char))
         }
-    }
-
-    @Test
-    fun formatRemoteCode() {
-        assertEquals("A3X-9K2", CodeGenerator.formatRemoteCode("A3X9K2"))
     }
 
     // SmartNaming

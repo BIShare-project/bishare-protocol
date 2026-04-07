@@ -17,12 +17,26 @@ public struct PrepareResponse: Codable, Sendable {
     public let files: [String: String]
     public let publicKey: String?
     public let maxConcurrent: Int?
+    public let chunkSize: Int?
+    public let windowSize: Int?
+    public let supportsCompression: Bool?
 
-    public init(sessionId: String, files: [String: String], publicKey: String? = nil, maxConcurrent: Int? = nil) {
+    public init(
+        sessionId: String,
+        files: [String: String],
+        publicKey: String? = nil,
+        maxConcurrent: Int? = nil,
+        chunkSize: Int? = nil,
+        windowSize: Int? = nil,
+        supportsCompression: Bool? = nil
+    ) {
         self.sessionId = sessionId
         self.files = files
         self.publicKey = publicKey
         self.maxConcurrent = maxConcurrent
+        self.chunkSize = chunkSize
+        self.windowSize = windowSize
+        self.supportsCompression = supportsCompression
     }
 }
 

@@ -69,6 +69,58 @@ class EncryptionTest {
         assertNull(decrypted)
     }
 
+    // v2.2 Streaming Chunk Encryption
+
+    @Test
+    fun chunkEncryptDecryptRoundTrip() {
+        val key = BIShareEncryption.hkdfDerive("test".toByteArray(), "salt".toByteArray(), "info".toByteArray(), 32)
+        val baseNonce = BIShareEncryption.generateBaseNonce()
+        val plaintext = "Chunk data for BIShare v2.2".toByteArray()
+
+        val encrypted = BIShareEncryption.encryptChunk(plaintext, key, 0, baseNonce)
+        assertNotNull(encrypted)
+        assertTrue(encrypted!!.size > plaintext.size)
+
+        val decrypted = BIShareEncryption.decryptChunk(encrypted, key, 0, baseNonce)
+        assertNotNull(decrypted)
+        assertArrayEquals(plaintext, decrypted)
+    }
+
+    @Test
+    fun differentChunkIndicesProduceDifferentCiphertext() {
+        val key = BIShareEncryption.hkdfDerive("test".toByteArray(), "salt".toByteArray(), "info".toByteArray(), 32)
+        val baseNonce = BIShareEncryption.generateBaseNonce()
+        val plaintext = "Same plaintext".toByteArray()
+
+        val enc0 = BIShareEncryption.encryptChunk(plaintext, key, 0, baseNonce)
+        val enc1 = BIShareEncryption.encryptChunk(plaintext, key, 1, baseNonce)
+        assertNotNull(enc0)
+        assertNotNull(enc1)
+        assertFalse(enc0!!.contentEquals(enc1!!))
+    }
+
+    @Test
+    fun chunkDecryptWrongIndexFails() {
+        val key = BIShareEncryption.hkdfDerive("test".toByteArray(), "salt".toByteArray(), "info".toByteArray(), 32)
+        val baseNonce = BIShareEncryption.generateBaseNonce()
+        val plaintext = "Secret chunk".toByteArray()
+
+        val encrypted = BIShareEncryption.encryptChunk(plaintext, key, 5, baseNonce)
+        assertNotNull(encrypted)
+
+        val decrypted = BIShareEncryption.decryptChunk(encrypted!!, key, 6, baseNonce)
+        assertNull(decrypted)
+    }
+
+    @Test
+    fun generateBaseNonce() {
+        val nonce1 = BIShareEncryption.generateBaseNonce()
+        val nonce2 = BIShareEncryption.generateBaseNonce()
+        assertEquals(12, nonce1.size)
+        assertEquals(12, nonce2.size)
+        assertFalse(nonce1.contentEquals(nonce2))
+    }
+
     @Test
     fun encryptedFormatNoncePlusCiphertextPlusTag() {
         val key = BIShareEncryption.hkdfDerive("test".toByteArray(), "salt".toByteArray(), "info".toByteArray(), 32)

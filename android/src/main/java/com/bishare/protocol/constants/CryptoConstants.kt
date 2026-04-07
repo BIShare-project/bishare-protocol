@@ -19,4 +19,9 @@ object BIShareCrypto {
     // Key Fingerprint
     /** Number of SHA-256 hash bytes used for visual fingerprint */
     const val FINGERPRINT_BYTES = 8
+
+    // Streaming Encryption (v2.2)
+
+    /** GCM overhead per encrypted chunk: nonce(12) + tag(16) */
+    const val GCM_OVERHEAD_PER_CHUNK = GCM_NONCE_SIZE + (GCM_TAG_BITS / 8)
 }
