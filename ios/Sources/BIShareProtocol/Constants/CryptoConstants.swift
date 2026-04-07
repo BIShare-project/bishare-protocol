@@ -22,4 +22,9 @@ public enum BIShareCrypto {
 
     /// Number of SHA-256 hash bytes used for visual fingerprint
     public static let fingerprintBytes = 8
+
+    // MARK: - Streaming Encryption (v2.2)
+
+    /// GCM overhead per encrypted chunk: nonce(12) + tag(16)
+    public static let gcmOverheadPerChunk = gcmNonceSize + (gcmTagBits / 8)
 }

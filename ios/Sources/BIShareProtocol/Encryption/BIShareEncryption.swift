@@ -90,4 +90,50 @@ public final class BIShareEncryption: @unchecked Sendable {
             .map { String(format: "%02X", $0) }
             .joined(separator: " ")
     }
+
+    // MARK: - Streaming Chunk Encryption (v2.2)
+
+    /// Generate a random 12-byte base nonce for a file transfer session.
+    public static func generateBaseNonce() -> Data {
+        var bytes = [UInt8](repeating: 0, count: BIShareCrypto.gcmNonceSize)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes)
+    }
+
+    /// Derive a unique nonce for a specific chunk by XORing baseNonce with chunkIndex.
+    private static func deriveChunkNonce(baseNonce: Data, chunkIndex: UInt64) -> AES.GCM.Nonce? {
+        guard baseNonce.count == BIShareCrypto.gcmNonceSize else { return nil }
+        var nonceBytes = [UInt8](baseNonce)
+        // XOR chunkIndex (8 bytes big-endian) into the last 8 bytes of nonce
+        var idx = chunkIndex.bigEndian
+        withUnsafeBytes(of: &idx) { indexBytes in
+            for i in 0..<8 {
+                nonceBytes[4 + i] ^= indexBytes[i]
+            }
+        }
+        return try? AES.GCM.Nonce(data: nonceBytes)
+    }
+
+    /// Encrypt a single chunk with a deterministic nonce derived from chunkIndex.
+    /// Format: nonce(12) + ciphertext + tag(16)
+    public static func encryptChunk(data: Data, using key: SymmetricKey, chunkIndex: UInt64, baseNonce: Data) -> Data? {
+        guard let nonce = deriveChunkNonce(baseNonce: baseNonce, chunkIndex: chunkIndex),
+              let sealed = try? AES.GCM.seal(data, using: key, nonce: nonce) else {
+            return nil
+        }
+        return sealed.combined
+    }
+
+    /// Decrypt a single chunk using the same deterministic nonce scheme.
+    public static func decryptChunk(data: Data, using key: SymmetricKey, chunkIndex: UInt64, baseNonce: Data) -> Data? {
+        guard let nonce = deriveChunkNonce(baseNonce: baseNonce, chunkIndex: chunkIndex),
+              let box = try? AES.GCM.SealedBox(combined: data) else {
+            return nil
+        }
+        // Verify the nonce in the combined data matches our derived nonce
+        let boxNonceBytes = [UInt8](box.nonce)
+        let expectedNonceBytes = [UInt8](nonce)
+        guard boxNonceBytes == expectedNonceBytes else { return nil }
+        return try? AES.GCM.open(box, using: key)
+    }
 }

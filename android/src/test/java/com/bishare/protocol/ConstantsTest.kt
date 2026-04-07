@@ -61,6 +61,42 @@ class ConstantsTest {
         assertFalse(charset.contains('1'))
     }
 
+    // v2.2 Speed Protocol
+
+    @Test
+    fun versionBumped() {
+        assertEquals("2.2", BIShareConfig.VERSION)
+    }
+
+    @Test
+    fun transferTuningConstants() {
+        assertEquals(262_144, BIShareConfig.DEFAULT_CHUNK_SIZE)
+        assertEquals(65_536, BIShareConfig.MIN_CHUNK_SIZE)
+        assertEquals(1_048_576, BIShareConfig.MAX_CHUNK_SIZE)
+        assertEquals(8, BIShareConfig.DEFAULT_MAX_CONCURRENT_V2)
+        assertEquals(16, BIShareConfig.DEFAULT_WINDOW_SIZE)
+        assertEquals(1024L, BIShareConfig.COMPRESSION_MIN_SIZE)
+        assertEquals("2.2", BIShareConfig.SPEED_PROTOCOL_MIN_VERSION)
+    }
+
+    @Test
+    fun compressibleMimeTypes() {
+        assertTrue(BIShareConfig.isCompressible("text/plain"))
+        assertTrue(BIShareConfig.isCompressible("text/html"))
+        assertTrue(BIShareConfig.isCompressible("application/json"))
+        assertTrue(BIShareConfig.isCompressible("application/xml"))
+        assertTrue(BIShareConfig.isCompressible("application/javascript"))
+        assertFalse(BIShareConfig.isCompressible("image/jpeg"))
+        assertFalse(BIShareConfig.isCompressible("video/mp4"))
+        assertFalse(BIShareConfig.isCompressible("application/zip"))
+        assertFalse(BIShareConfig.isCompressible("application/octet-stream"))
+    }
+
+    @Test
+    fun gcmOverheadPerChunk() {
+        assertEquals(28, BIShareCrypto.GCM_OVERHEAD_PER_CHUNK)
+    }
+
     @Test
     fun fileCategories() {
         assertEquals(BIShareFileCategory.IMAGES, BIShareFileCategory.from("image/jpeg"))

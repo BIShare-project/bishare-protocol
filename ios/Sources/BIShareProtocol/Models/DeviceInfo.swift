@@ -12,11 +12,12 @@ public struct DeviceInfo: Codable, Sendable {
     public var download: Bool
     public var publicKey: String?
     public var supportsBinary: Bool?
+    public var supportsCompression: Bool?
 
     enum CodingKeys: String, CodingKey {
         case alias, version, deviceModel, deviceType, fingerprint, port
         case protocol_ = "protocol"
-        case download, publicKey, supportsBinary
+        case download, publicKey, supportsBinary, supportsCompression
     }
 
     public init(
@@ -29,7 +30,8 @@ public struct DeviceInfo: Codable, Sendable {
         protocol_: String = BIShareConfig.protocolScheme,
         download: Bool = false,
         publicKey: String? = nil,
-        supportsBinary: Bool? = true
+        supportsBinary: Bool? = true,
+        supportsCompression: Bool? = nil
     ) {
         self.alias = alias
         self.version = version
@@ -41,5 +43,6 @@ public struct DeviceInfo: Codable, Sendable {
         self.download = download
         self.publicKey = publicKey
         self.supportsBinary = supportsBinary
+        self.supportsCompression = supportsCompression
     }
 }

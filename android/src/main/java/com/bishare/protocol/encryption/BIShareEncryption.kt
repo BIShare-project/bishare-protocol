@@ -181,5 +181,65 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
                 generateKeyPair()
             }
         }
+
+        // MARK: - Streaming Chunk Encryption (v2.2)
+
+        /** Generate a random 12-byte base nonce for a file transfer session. */
+        fun generateBaseNonce(): ByteArray {
+            val nonce = ByteArray(BIShareCrypto.GCM_NONCE_SIZE)
+            SecureRandom().nextBytes(nonce)
+            return nonce
+        }
+
+        /** Derive a unique nonce for a specific chunk by XORing baseNonce with chunkIndex. */
+        private fun deriveChunkNonce(baseNonce: ByteArray, chunkIndex: Long): ByteArray {
+            val nonce = baseNonce.copyOf()
+            // XOR chunkIndex (8 bytes big-endian) into the last 8 bytes of nonce
+            for (i in 0 until 8) {
+                nonce[4 + i] = (nonce[4 + i].toInt() xor ((chunkIndex shr (56 - i * 8)) and 0xFF).toInt()).toByte()
+            }
+            return nonce
+        }
+
+        /**
+         * Encrypt a single chunk with a deterministic nonce derived from chunkIndex.
+         * @return Combined data: nonce(12) + ciphertext + tag(16), or null on failure.
+         */
+        fun encryptChunk(data: ByteArray, key: ByteArray, chunkIndex: Long, baseNonce: ByteArray): ByteArray? {
+            return try {
+                val nonce = deriveChunkNonce(baseNonce, chunkIndex)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                val keySpec = SecretKeySpec(key, "AES")
+                val gcmSpec = GCMParameterSpec(BIShareCrypto.GCM_TAG_BITS, nonce)
+                cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+                val ciphertext = cipher.doFinal(data)
+                nonce + ciphertext // nonce(12) + ciphertext + tag(16)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        /**
+         * Decrypt a single chunk using the same deterministic nonce scheme.
+         * @param data Combined format: nonce(12) + ciphertext + tag(16).
+         * @return Decrypted plaintext, or null on failure.
+         */
+        fun decryptChunk(data: ByteArray, key: ByteArray, chunkIndex: Long, baseNonce: ByteArray): ByteArray? {
+            return try {
+                if (data.size < BIShareCrypto.GCM_NONCE_SIZE + 16) return null
+                val embeddedNonce = data.copyOfRange(0, BIShareCrypto.GCM_NONCE_SIZE)
+                val expectedNonce = deriveChunkNonce(baseNonce, chunkIndex)
+                // Verify nonce matches expected derived nonce
+                if (!embeddedNonce.contentEquals(expectedNonce)) return null
+                val ciphertext = data.copyOfRange(BIShareCrypto.GCM_NONCE_SIZE, data.size)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                val keySpec = SecretKeySpec(key, "AES")
+                val gcmSpec = GCMParameterSpec(BIShareCrypto.GCM_TAG_BITS, embeddedNonce)
+                cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                cipher.doFinal(ciphertext)
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 }

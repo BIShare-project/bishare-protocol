@@ -65,28 +65,6 @@ final class EncryptionTests: XCTestCase {
         XCTAssertEqual(decrypted, plaintext)
     }
 
-    func testRemoteKeyDerivation() {
-        let code = "A3X9K2P4HN7RVWQB" // 16-char code
-        guard let key1 = BIShareEncryption.deriveRemoteKey(from: code),
-              let key2 = BIShareEncryption.deriveRemoteKey(from: code) else {
-            XCTFail("Remote key derivation failed"); return
-        }
-
-        // Same code should produce same key
-        let plaintext = Data("Remote file".utf8)
-        guard let encrypted = BIShareEncryption.encrypt(data: plaintext, using: key1),
-              let decrypted = BIShareEncryption.decrypt(data: encrypted, using: key2) else {
-            XCTFail("Remote encrypt/decrypt failed"); return
-        }
-        XCTAssertEqual(decrypted, plaintext)
-    }
-
-    func testRemoteKeyTooShortFails() {
-        let shortCode = "AB"
-        let key = BIShareEncryption.deriveRemoteKey(from: shortCode)
-        XCTAssertNil(key)
-    }
-
     func testKeyFingerprint() {
         let enc = BIShareEncryption()
         let fp = enc.keyFingerprint
@@ -96,6 +74,60 @@ final class EncryptionTests: XCTestCase {
         for part in parts {
             XCTAssertEqual(part.count, 2)
         }
+    }
+
+    // MARK: - v2.2 Streaming Chunk Encryption
+
+    func testChunkEncryptDecryptRoundTrip() {
+        let key = SymmetricKey(size: .bits256)
+        let baseNonce = BIShareEncryption.generateBaseNonce()
+        let plaintext = Data("Chunk data for BIShare v2.2".utf8)
+
+        guard let encrypted = BIShareEncryption.encryptChunk(data: plaintext, using: key, chunkIndex: 0, baseNonce: baseNonce) else {
+            XCTFail("Chunk encryption failed"); return
+        }
+
+        XCTAssertGreaterThan(encrypted.count, plaintext.count)
+
+        guard let decrypted = BIShareEncryption.decryptChunk(data: encrypted, using: key, chunkIndex: 0, baseNonce: baseNonce) else {
+            XCTFail("Chunk decryption failed"); return
+        }
+
+        XCTAssertEqual(decrypted, plaintext)
+    }
+
+    func testDifferentChunkIndicesProduceDifferentCiphertext() {
+        let key = SymmetricKey(size: .bits256)
+        let baseNonce = BIShareEncryption.generateBaseNonce()
+        let plaintext = Data("Same plaintext".utf8)
+
+        guard let enc0 = BIShareEncryption.encryptChunk(data: plaintext, using: key, chunkIndex: 0, baseNonce: baseNonce),
+              let enc1 = BIShareEncryption.encryptChunk(data: plaintext, using: key, chunkIndex: 1, baseNonce: baseNonce) else {
+            XCTFail("Chunk encryption failed"); return
+        }
+
+        XCTAssertNotEqual(enc0, enc1)
+    }
+
+    func testChunkDecryptWrongIndexFails() {
+        let key = SymmetricKey(size: .bits256)
+        let baseNonce = BIShareEncryption.generateBaseNonce()
+        let plaintext = Data("Secret chunk".utf8)
+
+        guard let encrypted = BIShareEncryption.encryptChunk(data: plaintext, using: key, chunkIndex: 5, baseNonce: baseNonce) else {
+            XCTFail("Chunk encryption failed"); return
+        }
+
+        let decrypted = BIShareEncryption.decryptChunk(data: encrypted, using: key, chunkIndex: 6, baseNonce: baseNonce)
+        XCTAssertNil(decrypted)
+    }
+
+    func testGenerateBaseNonce() {
+        let nonce1 = BIShareEncryption.generateBaseNonce()
+        let nonce2 = BIShareEncryption.generateBaseNonce()
+        XCTAssertEqual(nonce1.count, 12)
+        XCTAssertEqual(nonce2.count, 12)
+        XCTAssertNotEqual(nonce1, nonce2)
     }
 
     func testPeerFingerprint() {

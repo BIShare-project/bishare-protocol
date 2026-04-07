@@ -63,6 +63,106 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.text, "hello")
     }
 
+    // MARK: - v2.2 New Fields
+
+    func testDeviceInfoSupportsCompression() throws {
+        let info = DeviceInfo(alias: "Test", fingerprint: "fp", supportsCompression: true)
+        let data = try JSONEncoder().encode(info)
+        let decoded = try JSONDecoder().decode(DeviceInfo.self, from: data)
+        XCTAssertEqual(decoded.supportsCompression, true)
+    }
+
+    func testDeviceInfoOldJsonBackwardCompat() throws {
+        // Old JSON without supportsCompression should decode to nil
+        let json = """
+        {"alias":"Test","version":"2.0","fingerprint":"fp","port":58317,"protocol":"https","download":false}
+        """
+        let decoded = try JSONDecoder().decode(DeviceInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.alias, "Test")
+        XCTAssertNil(decoded.supportsCompression)
+        XCTAssertNil(decoded.supportsBinary)
+    }
+
+    func testPrepareResponseNewFields() throws {
+        let resp = PrepareResponse(
+            sessionId: "s1", files: ["f1": "t1"],
+            chunkSize: 262_144, windowSize: 16, supportsCompression: true
+        )
+        let data = try JSONEncoder().encode(resp)
+        let decoded = try JSONDecoder().decode(PrepareResponse.self, from: data)
+        XCTAssertEqual(decoded.chunkSize, 262_144)
+        XCTAssertEqual(decoded.windowSize, 16)
+        XCTAssertEqual(decoded.supportsCompression, true)
+    }
+
+    func testPrepareResponseOldJsonBackwardCompat() throws {
+        let json = """
+        {"sessionId":"s1","files":{"f1":"t1"}}
+        """
+        let decoded = try JSONDecoder().decode(PrepareResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.sessionId, "s1")
+        XCTAssertNil(decoded.chunkSize)
+        XCTAssertNil(decoded.windowSize)
+        XCTAssertNil(decoded.supportsCompression)
+        XCTAssertNil(decoded.maxConcurrent)
+    }
+
+    func testBinaryFileStartNewFields() throws {
+        let start = BinaryFileStart(
+            fileName: "test.txt", size: 1024, fileType: "text/plain", sha256: nil,
+            compression: BIShareCompression.zlib.rawValue, baseNonce: "AQIDBA==", chunkSize: 262_144
+        )
+        let data = try JSONEncoder().encode(start)
+        let decoded = try JSONDecoder().decode(BinaryFileStart.self, from: data)
+        XCTAssertEqual(decoded.compression, 0x01)
+        XCTAssertEqual(decoded.baseNonce, "AQIDBA==")
+        XCTAssertEqual(decoded.chunkSize, 262_144)
+    }
+
+    func testBinaryAckCoding() throws {
+        let ack = BinaryAck(chunksReceived: 42, windowSize: 16)
+        let data = try JSONEncoder().encode(ack)
+        let decoded = try JSONDecoder().decode(BinaryAck.self, from: data)
+        XCTAssertEqual(decoded.chunksReceived, 42)
+        XCTAssertEqual(decoded.windowSize, 16)
+    }
+
+    func testNewMessageTypes() {
+        XCTAssertEqual(BIShareMessageType(rawValue: 0x09), .ack)
+        XCTAssertEqual(BIShareMessageType(rawValue: 0x0A), .pause)
+        XCTAssertEqual(BIShareMessageType(rawValue: 0x0B), .resume)
+    }
+
+    func testDecoderV2ZeroCopy() {
+        // Create 2 frames: a sessionEnd and a cancel
+        let frame1 = BIShareBinaryEncoder.encodeSessionEnd()
+        let frame2 = BIShareBinaryEncoder.encodeCancel()
+        var buffer = Data()
+        buffer.append(frame1)
+        buffer.append(frame2)
+
+        let (views, consumed) = BIShareBinaryDecoder.decodeAllV2(buffer)
+        XCTAssertEqual(views.count, 2)
+        XCTAssertEqual(consumed, buffer.count)
+        XCTAssertEqual(views[0].type, .sessionEnd)
+        XCTAssertEqual(views[0].payloadLength, 0)
+        XCTAssertEqual(views[1].type, .cancel)
+    }
+
+    func testDecoderV2WithPayload() {
+        let payload = Data("test-payload".utf8)
+        let frame = BIShareBinaryEncoder.encode(BIShareFrame(type: .fileData, fileId: 42, payload: payload))
+        let result = BIShareBinaryDecoder.decodeV2(frame)
+        if case .success(let view, let consumed) = result {
+            XCTAssertEqual(view.type, .fileData)
+            XCTAssertEqual(view.fileId, 42)
+            XCTAssertEqual(view.payload, payload)
+            XCTAssertEqual(consumed, frame.count)
+        } else {
+            XCTFail("Expected success")
+        }
+    }
+
     func testReceivedFileExpiry() {
         let expired = ReceivedFile(
             id: "1", fileName: "test.txt", size: 100, fileType: "text/plain",

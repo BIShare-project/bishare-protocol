@@ -55,6 +55,38 @@ final class ConstantsTests: XCTestCase {
         XCTAssertFalse(charset.contains("1"))
     }
 
+    // MARK: - v2.2 Speed Protocol
+
+    func testVersionBumped() {
+        XCTAssertEqual(BIShareConfig.version, "2.2")
+    }
+
+    func testTransferTuningConstants() {
+        XCTAssertEqual(BIShareConfig.defaultChunkSize, 262_144)
+        XCTAssertEqual(BIShareConfig.minChunkSize, 65_536)
+        XCTAssertEqual(BIShareConfig.maxChunkSize, 1_048_576)
+        XCTAssertEqual(BIShareConfig.defaultMaxConcurrentV2, 8)
+        XCTAssertEqual(BIShareConfig.defaultWindowSize, 16)
+        XCTAssertEqual(BIShareConfig.compressionMinSize, 1024)
+        XCTAssertEqual(BIShareConfig.speedProtocolMinVersion, "2.2")
+    }
+
+    func testCompressibleMimeTypes() {
+        XCTAssertTrue(BIShareConfig.isCompressible(mimeType: "text/plain"))
+        XCTAssertTrue(BIShareConfig.isCompressible(mimeType: "text/html"))
+        XCTAssertTrue(BIShareConfig.isCompressible(mimeType: "application/json"))
+        XCTAssertTrue(BIShareConfig.isCompressible(mimeType: "application/xml"))
+        XCTAssertTrue(BIShareConfig.isCompressible(mimeType: "application/javascript"))
+        XCTAssertFalse(BIShareConfig.isCompressible(mimeType: "image/jpeg"))
+        XCTAssertFalse(BIShareConfig.isCompressible(mimeType: "video/mp4"))
+        XCTAssertFalse(BIShareConfig.isCompressible(mimeType: "application/zip"))
+        XCTAssertFalse(BIShareConfig.isCompressible(mimeType: "application/octet-stream"))
+    }
+
+    func testGcmOverheadPerChunk() {
+        XCTAssertEqual(BIShareCrypto.gcmOverheadPerChunk, 28)
+    }
+
     func testFileCategories() {
         XCTAssertEqual(BIShareFileCategory.from(mimeType: "image/jpeg"), .images)
         XCTAssertEqual(BIShareFileCategory.from(mimeType: "video/mp4"), .videos)

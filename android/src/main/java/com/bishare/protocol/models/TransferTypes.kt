@@ -9,7 +9,10 @@ data class PrepareResponse(
     val sessionId: String,
     val files: Map<String, String>,
     val publicKey: String? = null,
-    val maxConcurrent: Int? = null
+    val maxConcurrent: Int? = null,
+    val chunkSize: Int? = null,
+    val windowSize: Int? = null,
+    val supportsCompression: Boolean? = null
 )
 
 data class UploadResponse(
