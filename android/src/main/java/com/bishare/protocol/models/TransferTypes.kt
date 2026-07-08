@@ -12,7 +12,9 @@ data class PrepareResponse(
     val maxConcurrent: Int? = null,
     val chunkSize: Int? = null,
     val windowSize: Int? = null,
-    val supportsCompression: Boolean? = null
+    val supportsCompression: Boolean? = null,
+    val keepAlive: Boolean? = null,
+    val streamsPerFile: Int? = null
 )
 
 data class UploadResponse(

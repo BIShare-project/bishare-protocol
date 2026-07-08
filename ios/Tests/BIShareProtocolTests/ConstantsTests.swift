@@ -31,6 +31,8 @@ final class ConstantsTests: XCTestCase {
         XCTAssertEqual(BIShareService.room, "_bishare-room._tcp")
         XCTAssertEqual(BIShareService.nearby, "bishare-nearby")
         XCTAssertEqual(BIShareService.quicALPN, ["bishare-quic"])
+        XCTAssertEqual(BIShareService.aware, "_bishare-aware._tcp")
+        XCTAssertEqual(BIShareService.awareNan, "bishare-aware")
     }
 
     func testAPIPaths() {
@@ -58,7 +60,7 @@ final class ConstantsTests: XCTestCase {
     // MARK: - v2.2 Speed Protocol
 
     func testVersionBumped() {
-        XCTAssertEqual(BIShareConfig.version, "2.2")
+        XCTAssertEqual(BIShareConfig.version, "2.3")
     }
 
     func testTransferTuningConstants() {
@@ -85,6 +87,13 @@ final class ConstantsTests: XCTestCase {
 
     func testGcmOverheadPerChunk() {
         XCTAssertEqual(BIShareCrypto.gcmOverheadPerChunk, 28)
+    }
+
+    // MARK: - v2.3 P2P Protocol
+
+    func testP2PProtocolConstants() {
+        XCTAssertEqual(BIShareConfig.p2pProtocolMinVersion, "2.3")
+        XCTAssertEqual(BIShareConfig.defaultStreamsPerFile, 4)
     }
 
     func testFileCategories() {

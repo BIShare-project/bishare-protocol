@@ -4,7 +4,7 @@ package com.bishare.protocol.constants
  * Protocol-level configuration constants.
  */
 object BIShareConfig {
-    const val VERSION = "2.2"
+    const val VERSION = "2.3"
     const val PROTOCOL_SCHEME = "https"
 
     // Deep Links
@@ -71,4 +71,12 @@ object BIShareConfig {
     fun isCompressible(mimeType: String): Boolean {
         return COMPRESSIBLE_MIME_TYPES.any { mimeType.startsWith(it) || mimeType == it }
     }
+
+    // P2P Protocol (v2.3)
+
+    /** Protocol version that supports v2.3 features (raw-key wire format, keep-alive, parallel streams, Wi-Fi Aware) */
+    const val P2P_PROTOCOL_MIN_VERSION = "2.3"
+
+    /** Default parallel TCP streams per large file (v2.3+) */
+    const val DEFAULT_STREAMS_PER_FILE = 4
 }

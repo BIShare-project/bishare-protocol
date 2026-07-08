@@ -15,5 +15,6 @@ data class DeviceInfo(
     val download: Boolean = false,
     val publicKey: String? = null,
     val supportsBinary: Boolean? = true,
-    val supportsCompression: Boolean? = null
+    val supportsCompression: Boolean? = null,
+    val supportsKeepAlive: Boolean? = null
 )

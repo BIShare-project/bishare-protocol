@@ -20,6 +20,8 @@ public struct PrepareResponse: Codable, Sendable {
     public let chunkSize: Int?
     public let windowSize: Int?
     public let supportsCompression: Bool?
+    public let keepAlive: Bool?
+    public let streamsPerFile: Int?
 
     public init(
         sessionId: String,
@@ -28,7 +30,9 @@ public struct PrepareResponse: Codable, Sendable {
         maxConcurrent: Int? = nil,
         chunkSize: Int? = nil,
         windowSize: Int? = nil,
-        supportsCompression: Bool? = nil
+        supportsCompression: Bool? = nil,
+        keepAlive: Bool? = nil,
+        streamsPerFile: Int? = nil
     ) {
         self.sessionId = sessionId
         self.files = files
@@ -37,6 +41,8 @@ public struct PrepareResponse: Codable, Sendable {
         self.chunkSize = chunkSize
         self.windowSize = windowSize
         self.supportsCompression = supportsCompression
+        self.keepAlive = keepAlive
+        self.streamsPerFile = streamsPerFile
     }
 }
 

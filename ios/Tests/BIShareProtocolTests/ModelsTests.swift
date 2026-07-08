@@ -107,6 +107,48 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(decoded.maxConcurrent)
     }
 
+    // MARK: - v2.3 New Fields
+
+    func testDeviceInfoSupportsKeepAlive() throws {
+        let info = DeviceInfo(alias: "Test", fingerprint: "fp", supportsKeepAlive: true)
+        let data = try JSONEncoder().encode(info)
+        let decoded = try JSONDecoder().decode(DeviceInfo.self, from: data)
+        XCTAssertEqual(decoded.supportsKeepAlive, true)
+    }
+
+    func testDeviceInfoV22JsonBackwardCompat() throws {
+        // v2.2 JSON without supportsKeepAlive should decode to nil
+        let json = """
+        {"alias":"Test","version":"2.2","fingerprint":"fp","port":58317,"protocol":"https","download":false}
+        """
+        let decoded = try JSONDecoder().decode(DeviceInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.alias, "Test")
+        XCTAssertNil(decoded.supportsKeepAlive)
+    }
+
+    func testPrepareResponseV23Fields() throws {
+        let resp = PrepareResponse(
+            sessionId: "s1", files: ["f1": "t1"],
+            keepAlive: true, streamsPerFile: 4
+        )
+        let data = try JSONEncoder().encode(resp)
+        let decoded = try JSONDecoder().decode(PrepareResponse.self, from: data)
+        XCTAssertEqual(decoded.keepAlive, true)
+        XCTAssertEqual(decoded.streamsPerFile, 4)
+    }
+
+    func testPrepareResponseV22JsonBackwardCompat() throws {
+        // v2.2 JSON without keepAlive/streamsPerFile should decode to nil
+        let json = """
+        {"sessionId":"s1","files":{"f1":"t1"},"chunkSize":262144}
+        """
+        let decoded = try JSONDecoder().decode(PrepareResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.sessionId, "s1")
+        XCTAssertEqual(decoded.chunkSize, 262_144)
+        XCTAssertNil(decoded.keepAlive)
+        XCTAssertNil(decoded.streamsPerFile)
+    }
+
     func testBinaryFileStartNewFields() throws {
         let start = BinaryFileStart(
             fileName: "test.txt", size: 1024, fileType: "text/plain", sha256: nil,

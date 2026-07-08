@@ -13,11 +13,17 @@ public struct DeviceInfo: Codable, Sendable {
     public var publicKey: String?
     public var supportsBinary: Bool?
     public var supportsCompression: Bool?
+    public var supportsKeepAlive: Bool?
+    /// The device's own LAN IPv4 address, self-reported so peers don't have to rely on the
+    /// transport-resolved endpoint. Over Apple's AWDL peer-to-peer Wi-Fi, Bonjour resolves
+    /// Apple↔Apple peers to an IPv6 link-local address (fe80::…%enX) that later direct HTTP
+    /// connections can't reach — trusting this field instead makes discovery reliable.
+    public var ip: String?
 
     enum CodingKeys: String, CodingKey {
         case alias, version, deviceModel, deviceType, fingerprint, port
         case protocol_ = "protocol"
-        case download, publicKey, supportsBinary, supportsCompression
+        case download, publicKey, supportsBinary, supportsCompression, supportsKeepAlive, ip
     }
 
     public init(
@@ -31,7 +37,9 @@ public struct DeviceInfo: Codable, Sendable {
         download: Bool = false,
         publicKey: String? = nil,
         supportsBinary: Bool? = true,
-        supportsCompression: Bool? = nil
+        supportsCompression: Bool? = nil,
+        supportsKeepAlive: Bool? = nil,
+        ip: String? = nil
     ) {
         self.alias = alias
         self.version = version
@@ -44,5 +52,7 @@ public struct DeviceInfo: Codable, Sendable {
         self.publicKey = publicKey
         self.supportsBinary = supportsBinary
         self.supportsCompression = supportsCompression
+        self.supportsKeepAlive = supportsKeepAlive
+        self.ip = ip
     }
 }

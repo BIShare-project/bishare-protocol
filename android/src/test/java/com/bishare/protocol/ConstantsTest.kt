@@ -65,7 +65,7 @@ class ConstantsTest {
 
     @Test
     fun versionBumped() {
-        assertEquals("2.2", BIShareConfig.VERSION)
+        assertEquals("2.3", BIShareConfig.VERSION)
     }
 
     @Test
@@ -95,6 +95,20 @@ class ConstantsTest {
     @Test
     fun gcmOverheadPerChunk() {
         assertEquals(28, BIShareCrypto.GCM_OVERHEAD_PER_CHUNK)
+    }
+
+    // v2.3 P2P Protocol
+
+    @Test
+    fun p2pProtocolConstants() {
+        assertEquals("2.3", BIShareConfig.P2P_PROTOCOL_MIN_VERSION)
+        assertEquals(4, BIShareConfig.DEFAULT_STREAMS_PER_FILE)
+    }
+
+    @Test
+    fun awareServiceTypes() {
+        assertEquals("_bishare-aware._tcp", BIShareService.AWARE)
+        assertEquals("bishare-aware", BIShareService.AWARE_NAN)
     }
 
     @Test

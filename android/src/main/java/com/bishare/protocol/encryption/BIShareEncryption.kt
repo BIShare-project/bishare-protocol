@@ -1,11 +1,11 @@
 package com.bishare.protocol.encryption
 
-import android.util.Base64
 import com.bishare.protocol.constants.BIShareConfig
 import com.bishare.protocol.constants.BIShareCrypto
 import java.security.*
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
 import javax.crypto.Mac
@@ -26,9 +26,13 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
         generateKeyPair()
     }
 
-    /** Base64-encoded public key for sharing with peers. */
+    /**
+     * Base64-encoded public key for sharing with peers.
+     *
+     * Raw 32-byte X25519 key — same wire format as iOS (CryptoKit rawRepresentation) and Rust.
+     */
     val publicKeyBase64: String
-        get() = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
+        get() = Base64.getEncoder().encodeToString(rawFromX509(keyPair.public.encoded) ?: keyPair.public.encoded)
 
     /** Raw private key bytes for persistence by the app. */
     val privateKeyData: ByteArray
@@ -43,13 +47,16 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
     /**
      * Derive a shared symmetric key from a peer's public key using ECDH + HKDF.
      * @param peerPublicKeyBase64 The peer's base64-encoded X25519 public key.
+     *   Accepts raw 32 bytes (iOS/Rust/Android v2.3+) and legacy 44-byte X.509 (older Android).
      * @return 32-byte AES key, or null if key agreement fails.
      */
     fun deriveSharedKey(peerPublicKeyBase64: String): ByteArray? {
         return try {
-            val peerKeyBytes = Base64.decode(peerPublicKeyBase64, Base64.NO_WRAP)
+            val peerKeyBytes = Base64.getDecoder().decode(peerPublicKeyBase64)
+            val rawKey = normalizeToRaw(peerKeyBytes) ?: return null
+            val x509Key = x509FromRaw(rawKey) ?: return null
             val kf = KeyFactory.getInstance("X25519")
-            val peerPublicKey = kf.generatePublic(X509EncodedKeySpec(peerKeyBytes))
+            val peerPublicKey = kf.generatePublic(X509EncodedKeySpec(x509Key))
 
             val agreement = KeyAgreement.getInstance("X25519")
             agreement.init(keyPair.private)
@@ -67,11 +74,38 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
         }
     }
 
-    /** Visual fingerprint of this device's public key (e.g., "A1 B2 C3 D4 E5 F6 G7 H8"). */
+    /** Visual fingerprint of this device's public key (e.g., "A1 B2 C3 D4 E5 F6 G7 H8"). Computed over the raw 32-byte key. */
     val keyFingerprint: String
-        get() = fingerprint(keyPair.public.encoded)
+        get() = fingerprint(rawFromX509(keyPair.public.encoded) ?: keyPair.public.encoded)
 
     companion object {
+
+        // MARK: - Public Key Wire Format (v2.3)
+
+        /** Fixed 12-byte DER SubjectPublicKeyInfo header for X25519 (RFC 8410). */
+        private val X509_X25519_PREFIX = byteArrayOf(0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00)
+
+        /** Extract the raw 32-byte key from a 44-byte X.509 SPKI encoding, or null if not a valid X25519 SPKI. */
+        fun rawFromX509(encoded: ByteArray): ByteArray? {
+            if (encoded.size != 44) return null
+            if (!encoded.copyOfRange(0, X509_X25519_PREFIX.size).contentEquals(X509_X25519_PREFIX)) return null
+            return encoded.copyOfRange(12, 44)
+        }
+
+        /** Wrap a raw 32-byte key in an X.509 SPKI encoding for the JCA KeyFactory, or null if not 32 bytes. */
+        fun x509FromRaw(raw: ByteArray): ByteArray? {
+            if (raw.size != 32) return null
+            return X509_X25519_PREFIX + raw
+        }
+
+        /** Normalize a peer public key to raw 32 bytes — accepts raw 32-byte and legacy 44-byte X.509 formats. */
+        fun normalizeToRaw(keyBytes: ByteArray): ByteArray? {
+            return when (keyBytes.size) {
+                32 -> keyBytes
+                44 -> rawFromX509(keyBytes)
+                else -> null
+            }
+        }
 
         // MARK: - AES-256-GCM
 
@@ -119,11 +153,12 @@ class BIShareEncryption(privateKeyBytes: ByteArray? = null, publicKeyBytes: Byte
             }
         }
 
-        /** Generate a visual fingerprint for a peer's base64-encoded public key. */
+        /** Generate a visual fingerprint for a peer's base64-encoded public key. Computed over the raw 32-byte key. */
         fun peerFingerprint(base64Key: String): String {
             return try {
-                val data = Base64.decode(base64Key, Base64.NO_WRAP)
-                fingerprint(data)
+                val data = Base64.getDecoder().decode(base64Key)
+                val raw = normalizeToRaw(data) ?: return "—"
+                fingerprint(raw)
             } catch (e: Exception) {
                 "—"
             }

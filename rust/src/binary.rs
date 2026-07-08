@@ -268,3 +268,193 @@ pub struct BinaryResume {
 pub struct BinaryError {
     pub message: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_encode_decode_roundtrip() {
+        let payload = b"hello binary".to_vec();
+        let encoded = Encoder::encode(MessageType::FileData, 42, &payload);
+        // Header layout: [type:1][length:4 BE][fileId:4 BE]
+        assert_eq!(encoded[0], MessageType::FileData as u8);
+        assert_eq!(u32::from_be_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]), payload.len() as u32);
+        assert_eq!(u32::from_be_bytes([encoded[5], encoded[6], encoded[7], encoded[8]]), 42);
+
+        match Decoder::decode(&encoded) {
+            DecodeResult::Success { frame, consumed } => {
+                assert_eq!(frame.msg_type, MessageType::FileData);
+                assert_eq!(frame.file_id, 42);
+                assert_eq!(frame.payload, payload);
+                assert_eq!(consumed, HEADER_SIZE + payload.len());
+            }
+            _ => panic!("expected successful decode"),
+        }
+    }
+
+    #[test]
+    fn test_decode_all_two_frames_and_partial() {
+        let mut buffer = Encoder::encode(MessageType::FileStart, 1, b"start");
+        buffer.extend_from_slice(&Encoder::encode(MessageType::FileEnd, 1, b"end"));
+        let expected_consumed = buffer.len();
+        // Trailing partial frame (header incomplete)
+        buffer.extend_from_slice(&[0x04, 0x00, 0x00, 0x01, 0x00]);
+
+        let (frames, consumed) = Decoder::decode_all(&buffer);
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].msg_type, MessageType::FileStart);
+        assert_eq!(frames[0].payload, b"start".to_vec());
+        assert_eq!(frames[1].msg_type, MessageType::FileEnd);
+        assert_eq!(frames[1].payload, b"end".to_vec());
+        assert_eq!(consumed, expected_consumed);
+    }
+
+    #[test]
+    fn test_decode_need_more_data() {
+        assert!(matches!(Decoder::decode(&[0x01, 0x00]), DecodeResult::NeedMoreData));
+    }
+
+    #[test]
+    fn test_decode_unknown_type() {
+        let mut buffer = vec![0xFF];
+        buffer.extend_from_slice(&0u32.to_be_bytes());
+        buffer.extend_from_slice(&0u32.to_be_bytes());
+        assert!(matches!(Decoder::decode(&buffer), DecodeResult::Error(_)));
+    }
+
+    #[test]
+    fn test_decode_v2_offsets() {
+        // Prefix simulates already-consumed bytes (nonzero base offset)
+        let prefix = Encoder::encode(MessageType::Ack, 7, b"ack");
+        let offset = prefix.len();
+        let mut buffer = prefix;
+        buffer.extend_from_slice(&Encoder::encode(MessageType::FileData, 9, b"payload"));
+
+        match Decoder::decode_v2(&buffer, offset) {
+            DecodeResultV2::Success { msg_type, file_id, payload_offset, payload_length, consumed } => {
+                assert_eq!(msg_type, MessageType::FileData);
+                assert_eq!(file_id, 9);
+                assert_eq!(payload_offset, offset + HEADER_SIZE);
+                assert_eq!(payload_length, 7);
+                assert_eq!(consumed, HEADER_SIZE + 7);
+                assert_eq!(&buffer[payload_offset..payload_offset + payload_length], b"payload");
+            }
+            _ => panic!("expected successful decode"),
+        }
+    }
+
+    #[test]
+    fn test_message_type_from_byte() {
+        let types = [
+            (0x01, MessageType::Prepare),
+            (0x02, MessageType::PrepareAck),
+            (0x03, MessageType::FileStart),
+            (0x04, MessageType::FileData),
+            (0x05, MessageType::FileEnd),
+            (0x06, MessageType::SessionEnd),
+            (0x07, MessageType::Cancel),
+            (0x08, MessageType::Error),
+            (0x09, MessageType::Ack),
+            (0x0A, MessageType::Pause),
+            (0x0B, MessageType::Resume),
+        ];
+        for (byte, expected) in types {
+            assert_eq!(MessageType::from_byte(byte), Some(expected));
+        }
+        assert_eq!(MessageType::from_byte(0x00), None);
+        assert_eq!(MessageType::from_byte(0xFF), None);
+    }
+
+    #[test]
+    fn test_binary_file_start_json_full() {
+        let start = BinaryFileStart {
+            file_name: "photo.jpg".to_string(),
+            size: 1024,
+            file_type: "image/jpeg".to_string(),
+            sha256: Some("abc".to_string()),
+            encrypted: true,
+            compression: Some(Compression::Zlib as u8),
+            base_nonce: Some("bm9uY2U=".to_string()),
+            chunk_size: Some(262144),
+        };
+        let json = serde_json::to_string(&start).unwrap();
+        assert!(json.contains("\"fileName\""));
+        assert!(json.contains("\"baseNonce\""));
+        assert!(json.contains("\"chunkSize\""));
+        let parsed: BinaryFileStart = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.file_name, "photo.jpg");
+        assert_eq!(parsed.compression, Some(0x01));
+        assert_eq!(parsed.base_nonce, Some("bm9uY2U=".to_string()));
+        assert_eq!(parsed.chunk_size, Some(262144));
+    }
+
+    #[test]
+    fn test_binary_file_start_json_minimal() {
+        // v2.2 optional fields absent → None
+        let json = r#"{"fileName":"a.txt","size":1,"fileType":"text/plain"}"#;
+        let parsed: BinaryFileStart = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.sha256, None);
+        assert!(!parsed.encrypted);
+        assert_eq!(parsed.compression, None);
+        assert_eq!(parsed.base_nonce, None);
+        assert_eq!(parsed.chunk_size, None);
+    }
+
+    #[test]
+    fn test_binary_file_end_json() {
+        let end = BinaryFileEnd { verified: true, encrypted: false };
+        let json = serde_json::to_string(&end).unwrap();
+        let parsed: BinaryFileEnd = serde_json::from_str(&json).unwrap();
+        assert!(parsed.verified);
+        assert!(!parsed.encrypted);
+    }
+
+    #[test]
+    fn test_binary_ack_json() {
+        let ack = BinaryAck { chunks_received: 128, window_size: 16 };
+        let json = serde_json::to_string(&ack).unwrap();
+        assert!(json.contains("\"chunksReceived\":128"));
+        assert!(json.contains("\"windowSize\":16"));
+        let parsed: BinaryAck = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.chunks_received, 128);
+        assert_eq!(parsed.window_size, 16);
+    }
+
+    #[test]
+    fn test_binary_pause_resume_error_json() {
+        let pause = BinaryPause { file_id: 3 };
+        let json = serde_json::to_string(&pause).unwrap();
+        assert!(json.contains("\"fileId\":3"));
+        let parsed: BinaryPause = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.file_id, 3);
+
+        let resume = BinaryResume { window_size: 32 };
+        let json = serde_json::to_string(&resume).unwrap();
+        assert!(json.contains("\"windowSize\":32"));
+        let parsed: BinaryResume = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.window_size, 32);
+
+        let error = BinaryError { message: "boom".to_string() };
+        let json = serde_json::to_string(&error).unwrap();
+        let parsed: BinaryError = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.message, "boom");
+    }
+
+    #[test]
+    fn test_encode_json_decode_json_roundtrip() {
+        let ack = BinaryAck { chunks_received: 5, window_size: 8 };
+        let encoded = Encoder::encode_json(MessageType::Ack, 2, &ack).unwrap();
+        match Decoder::decode(&encoded) {
+            DecodeResult::Success { frame, .. } => {
+                assert_eq!(frame.msg_type, MessageType::Ack);
+                assert_eq!(frame.file_id, 2);
+                let parsed: BinaryAck = Decoder::decode_json(&frame).unwrap();
+                assert_eq!(parsed.chunks_received, 5);
+                assert_eq!(parsed.window_size, 8);
+            }
+            _ => panic!("expected successful decode"),
+        }
+    }
+}
