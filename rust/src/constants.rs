@@ -2,7 +2,7 @@
 pub struct Config;
 
 impl Config {
-    pub const VERSION: &str = "2.2";
+    pub const VERSION: &str = "2.3";
     pub const PROTOCOL_SCHEME: &str = "https";
     pub const SCHEME: &str = "bishare";
     pub const CODE_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -26,6 +26,10 @@ impl Config {
     pub const DEFAULT_MAX_CONCURRENT_V2: usize = 8;
     pub const DEFAULT_WINDOW_SIZE: usize = 16;
     pub const COMPRESSION_MIN_SIZE: usize = 1024;
+
+    // P2P protocol v2.3
+    pub const P2P_PROTOCOL_MIN_VERSION: &str = "2.3";
+    pub const DEFAULT_STREAMS_PER_FILE: usize = 4;
 
     pub const COMPRESSIBLE_MIME_PREFIXES: &[&str] = &[
         "text/",
@@ -66,6 +70,10 @@ impl ServiceType {
     pub const ROOM_RAW: &str = "_bishare-room._tcp";
     pub const NEARBY: &str = "bishare-nearby";
     pub const QUIC_ALPN: &[&str] = &["bishare-quic"];
+    /// Wi-Fi Aware service type for iOS 26+ WiFiAwareServices
+    pub const AWARE: &str = "_bishare-aware._tcp";
+    /// Android Wi-Fi Aware NAN service name
+    pub const AWARE_NAN: &str = "bishare-aware";
 }
 
 /// Cryptographic Constants
@@ -152,5 +160,47 @@ impl FileCategory {
         } else {
             Self::Other
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_protocol_versions() {
+        assert_eq!(Config::VERSION, "2.3");
+        assert_eq!(Config::P2P_PROTOCOL_MIN_VERSION, "2.3");
+        assert_eq!(Config::DEFAULT_STREAMS_PER_FILE, 4);
+    }
+
+    #[test]
+    fn test_ports() {
+        assert_eq!(Port::MAIN, 58317);
+        assert_eq!(Port::QUIC, 58318);
+        assert_eq!(Port::ROOM, 58319);
+        assert_eq!(Port::WEBDAV, 58320);
+    }
+
+    #[test]
+    fn test_gcm_overhead_per_chunk() {
+        assert_eq!(Crypto::GCM_OVERHEAD_PER_CHUNK, 28);
+    }
+
+    #[test]
+    fn test_aware_service_types() {
+        assert_eq!(ServiceType::AWARE, "_bishare-aware._tcp");
+        assert_eq!(ServiceType::AWARE_NAN, "bishare-aware");
+    }
+
+    #[test]
+    fn test_file_category_from_mime() {
+        assert_eq!(FileCategory::from_mime("image/png"), FileCategory::Images);
+        assert_eq!(FileCategory::from_mime("video/quicktime"), FileCategory::Videos);
+        assert_eq!(FileCategory::from_mime("audio/mpeg"), FileCategory::Audio);
+        assert_eq!(FileCategory::from_mime("application/pdf"), FileCategory::Documents);
+        assert_eq!(FileCategory::from_mime("application/x-tar"), FileCategory::Archives);
+        assert_eq!(FileCategory::from_mime("application/octet-stream"), FileCategory::Other);
     }
 }

@@ -34,12 +34,25 @@ public final class BIShareEncryption: @unchecked Sendable {
 
     // MARK: - E2E Key Derivation (Curve25519 ECDH)
 
+    /// Fixed 12-byte DER SubjectPublicKeyInfo header for X25519 (RFC 8410)
+    private static let x509X25519Prefix = Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00])
+
+    /// Normalize a peer key to raw 32 bytes: accepts raw 32-byte keys and legacy 44-byte X.509 SPKI (old Android)
+    private static func normalizeRawKey(_ data: Data) -> Data? {
+        if data.count == 32 { return data }
+        if data.count == 44, data.prefix(12) == x509X25519Prefix {
+            return data.suffix(32)
+        }
+        return nil
+    }
+
     /// Derive a shared symmetric key from a peer's public key using ECDH + HKDF.
     /// - Parameter peerPublicKeyBase64: The peer's base64-encoded Curve25519 public key.
     /// - Returns: A `SymmetricKey` for AES-256-GCM, or `nil` if key agreement fails.
     public func deriveSharedKey(peerPublicKeyBase64: String) -> SymmetricKey? {
         guard let peerKeyData = Data(base64Encoded: peerPublicKeyBase64),
-              let peerKey = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: peerKeyData),
+              let rawKeyData = Self.normalizeRawKey(peerKeyData),
+              let peerKey = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: rawKeyData),
               let shared = try? privateKey.sharedSecretFromKeyAgreement(with: peerKey) else {
             return nil
         }
@@ -79,9 +92,11 @@ public final class BIShareEncryption: @unchecked Sendable {
     }
 
     /// Generate a visual fingerprint for a peer's base64-encoded public key.
+    /// The fingerprint is always computed over the raw 32 key bytes (legacy X.509 keys are normalized first).
     public static func peerFingerprint(base64Key: String) -> String {
-        guard let data = Data(base64Encoded: base64Key) else { return "—" }
-        return fingerprint(of: data)
+        guard let data = Data(base64Encoded: base64Key),
+              let rawKey = normalizeRawKey(data) else { return "—" }
+        return fingerprint(of: rawKey)
     }
 
     private static func fingerprint(of keyData: Data) -> String {

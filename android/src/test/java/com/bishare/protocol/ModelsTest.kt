@@ -14,7 +14,7 @@ class ModelsTest {
     @Test
     fun deviceInfoDefaultValues() {
         val info = DeviceInfo(alias = "Test", fingerprint = "fp")
-        assertEquals("2.2", info.version)
+        assertEquals("2.3", info.version)
         assertEquals(BISharePort.MAIN, info.port)
         assertEquals("https", info.protocol_)
         assertFalse(info.download)
@@ -113,6 +113,45 @@ class ModelsTest {
         assertNull(decoded.windowSize)
         assertNull(decoded.supportsCompression)
         assertNull(decoded.maxConcurrent)
+    }
+
+    // v2.3 New Fields
+
+    @Test
+    fun deviceInfoSupportsKeepAlive() {
+        val info = DeviceInfo(alias = "Test", fingerprint = "fp", supportsKeepAlive = true)
+        val json = gson.toJson(info)
+        val decoded = gson.fromJson(json, DeviceInfo::class.java)
+        assertEquals(true, decoded.supportsKeepAlive)
+    }
+
+    @Test
+    fun deviceInfoV22JsonBackwardCompat() {
+        val json = """{"alias":"Test","version":"2.2","fingerprint":"fp","port":58317,"protocol":"https","download":false}"""
+        val decoded = gson.fromJson(json, DeviceInfo::class.java)
+        assertEquals("Test", decoded.alias)
+        assertNull(decoded.supportsKeepAlive)
+    }
+
+    @Test
+    fun prepareResponseV23Fields() {
+        val resp = PrepareResponse(
+            sessionId = "s1", files = mapOf("f1" to "t1"),
+            keepAlive = true, streamsPerFile = 4
+        )
+        val json = gson.toJson(resp)
+        val decoded = gson.fromJson(json, PrepareResponse::class.java)
+        assertEquals(true, decoded.keepAlive)
+        assertEquals(4, decoded.streamsPerFile)
+    }
+
+    @Test
+    fun prepareResponseV22JsonBackwardCompat() {
+        val json = """{"sessionId":"s1","files":{"f1":"t1"},"chunkSize":262144}"""
+        val decoded = gson.fromJson(json, PrepareResponse::class.java)
+        assertEquals(262_144, decoded.chunkSize)
+        assertNull(decoded.keepAlive)
+        assertNull(decoded.streamsPerFile)
     }
 
     @Test

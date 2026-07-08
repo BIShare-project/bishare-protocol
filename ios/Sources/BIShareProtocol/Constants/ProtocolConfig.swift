@@ -3,7 +3,7 @@ import Foundation
 /// Protocol-level configuration constants.
 public enum BIShareConfig {
     /// Protocol version sent in DeviceInfo
-    public static let version = "2.2"
+    public static let version = "2.3"
     /// Default protocol scheme
     public static let protocolScheme = "https"
 
@@ -82,4 +82,12 @@ public enum BIShareConfig {
     public static func isCompressible(mimeType: String) -> Bool {
         compressibleMimeTypes.contains { mimeType.hasPrefix($0) || mimeType == $0 }
     }
+
+    // MARK: - P2P Protocol (v2.3)
+
+    /// Protocol version that supports v2.3 features (raw-key wire format, keep-alive, parallel streams, Wi-Fi Aware)
+    public static let p2pProtocolMinVersion = "2.3"
+
+    /// Default parallel TCP streams per large file (v2.3+)
+    public static let defaultStreamsPerFile = 4
 }

@@ -15,4 +15,10 @@ object BIShareService {
 
     /** Transfer room discovery — without trailing dot */
     const val ROOM_RAW = "_bishare-room._tcp"
+
+    /** Wi-Fi Aware service type (iOS 26+ WiFiAwareServices naming) */
+    const val AWARE = "_bishare-aware._tcp"
+
+    /** Android Wi-Fi Aware (NAN) service name (lowercase, WifiAwareManager) */
+    const val AWARE_NAN = "bishare-aware"
 }
