@@ -18,6 +18,13 @@ pub enum MessageType {
     Ack = 0x09,
     Pause = 0x0A,
     Resume = 0x0B,
+    // v2.4 premium features — never emit to a peer without the matching supports_* flag
+    ManifestStart = 0x0C,
+    ManifestChunk = 0x0D,
+    ManifestDelta = 0x0E,
+    ClipboardBinaryStart = 0x0F,
+    Handoff = 0x10,
+    MediaSignal = 0x11,
 }
 
 impl MessageType {
@@ -34,6 +41,12 @@ impl MessageType {
             0x09 => Some(Self::Ack),
             0x0A => Some(Self::Pause),
             0x0B => Some(Self::Resume),
+            0x0C => Some(Self::ManifestStart),
+            0x0D => Some(Self::ManifestChunk),
+            0x0E => Some(Self::ManifestDelta),
+            0x0F => Some(Self::ClipboardBinaryStart),
+            0x10 => Some(Self::Handoff),
+            0x11 => Some(Self::MediaSignal),
             _ => None,
         }
     }
@@ -223,6 +236,21 @@ pub struct BinaryFileStart {
     pub base_nonce: Option<String>,
     #[serde(rename = "chunkSize", skip_serializing_if = "Option::is_none")]
     pub chunk_size: Option<usize>,
+    /// Resume start offset in bytes, chunk-aligned so nonce derivation stays byte-exact (v2.4)
+    #[serde(rename = "chunkOffset", skip_serializing_if = "Option::is_none")]
+    pub chunk_offset: Option<u64>,
+    /// Broadcast: wrapped content key for this recipient, 60-byte envelope base64 (v2.4)
+    #[serde(rename = "contentKey", skip_serializing_if = "Option::is_none")]
+    pub content_key: Option<String>,
+    /// Live/motion photo pairing: shared UUID linking still + motion halves (v2.4)
+    #[serde(rename = "pairedId", skip_serializing_if = "Option::is_none")]
+    pub paired_id: Option<String>,
+    /// livePhotoStill | livePhotoMotion | motionPhoto | burst | raw | standalone (v2.4)
+    #[serde(rename = "assetKind", skip_serializing_if = "Option::is_none")]
+    pub asset_kind: Option<String>,
+    /// primary | companion (v2.4)
+    #[serde(rename = "pairRole", skip_serializing_if = "Option::is_none")]
+    pub pair_role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -238,6 +266,18 @@ pub struct BinaryFileEnd {
 pub enum Compression {
     None = 0x00,
     Zlib = 0x01,
+    Zstd = 0x02,
+}
+
+impl Compression {
+    pub fn from_byte(b: u8) -> Option<Self> {
+        match b {
+            0x00 => Some(Self::None),
+            0x01 => Some(Self::Zlib),
+            0x02 => Some(Self::Zstd),
+            _ => None,
+        }
+    }
 }
 
 /// Flow control: ACK
@@ -261,12 +301,119 @@ pub struct BinaryPause {
 pub struct BinaryResume {
     #[serde(rename = "windowSize")]
     pub window_size: usize,
+    /// Resume byte offset, chunk-aligned (v2.4)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u64>,
 }
 
 /// Error message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryError {
     pub message: String,
+}
+
+// ── v2.4 premium feature payloads ──
+
+/// ManifestStart (0x0C): announces a folder-sync manifest stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryManifestStart {
+    #[serde(rename = "syncId")]
+    pub sync_id: String,
+    #[serde(rename = "rootName")]
+    pub root_name: String,
+    #[serde(rename = "totalEntries")]
+    pub total_entries: u64,
+    pub cursor: u64,
+    #[serde(rename = "manifestHash")]
+    pub manifest_hash: String,
+}
+
+/// One entry in a ManifestChunk (0x0D) batch: `Vec<BinaryManifestEntry>`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryManifestEntry {
+    pub path: String,
+    pub size: u64,
+    #[serde(rename = "mtimeMs")]
+    pub mtime_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(rename = "isDir")]
+    pub is_dir: bool,
+}
+
+/// ManifestDelta (0x0E): incremental changes since a previous cursor
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryManifestDelta {
+    #[serde(rename = "syncId")]
+    pub sync_id: String,
+    #[serde(rename = "baseCursor")]
+    pub base_cursor: u64,
+    #[serde(rename = "newCursor")]
+    pub new_cursor: u64,
+    pub ops: Vec<DeltaOp>,
+}
+
+/// Single delta operation: add | modify | delete | rename
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeltaOp {
+    pub op: String,
+    pub path: String,
+    #[serde(rename = "newPath", skip_serializing_if = "Option::is_none")]
+    pub new_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(rename = "mtimeMs", skip_serializing_if = "Option::is_none")]
+    pub mtime_ms: Option<i64>,
+    /// Whether the target is a directory — without this a directory add is
+    /// indistinguishable from an empty file on the receiving side (v2.4)
+    #[serde(rename = "isDir", skip_serializing_if = "Option::is_none")]
+    pub is_dir: Option<bool>,
+}
+
+/// ClipboardBinaryStart (0x0F): binary clipboard payload header (image/file),
+/// data follows as FileData frames
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryClipboard {
+    /// image | file
+    pub kind: String,
+    pub mime: String,
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    pub sender: String,
+    pub alias: String,
+    pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub encrypted: bool,
+    #[serde(rename = "baseNonce", skip_serializing_if = "Option::is_none")]
+    pub base_nonce: Option<String>,
+    #[serde(rename = "chunkSize", skip_serializing_if = "Option::is_none")]
+    pub chunk_size: Option<usize>,
+}
+
+/// Handoff (0x10): continue an interrupted transfer on another device
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryHandoff {
+    #[serde(rename = "transferId")]
+    pub transfer_id: String,
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(rename = "bytesCommitted")]
+    pub bytes_committed: u64,
+    #[serde(rename = "chunkIndex")]
+    pub chunk_index: u64,
+    #[serde(rename = "baseNonce", skip_serializing_if = "Option::is_none")]
+    pub base_nonce: Option<String>,
+    #[serde(rename = "resumeToken")]
+    pub resume_token: String,
+    #[serde(rename = "targetFingerprint", skip_serializing_if = "Option::is_none")]
+    pub target_fingerprint: Option<String>,
 }
 
 #[cfg(test)]
@@ -359,12 +506,28 @@ mod tests {
             (0x09, MessageType::Ack),
             (0x0A, MessageType::Pause),
             (0x0B, MessageType::Resume),
+            (0x0C, MessageType::ManifestStart),
+            (0x0D, MessageType::ManifestChunk),
+            (0x0E, MessageType::ManifestDelta),
+            (0x0F, MessageType::ClipboardBinaryStart),
+            (0x10, MessageType::Handoff),
+            (0x11, MessageType::MediaSignal),
         ];
         for (byte, expected) in types {
             assert_eq!(MessageType::from_byte(byte), Some(expected));
         }
         assert_eq!(MessageType::from_byte(0x00), None);
+        assert_eq!(MessageType::from_byte(0x12), None);
         assert_eq!(MessageType::from_byte(0xFF), None);
+    }
+
+    #[test]
+    fn test_compression_from_byte() {
+        assert_eq!(Compression::from_byte(0x00), Some(Compression::None));
+        assert_eq!(Compression::from_byte(0x01), Some(Compression::Zlib));
+        assert_eq!(Compression::from_byte(0x02), Some(Compression::Zstd));
+        assert_eq!(Compression::from_byte(0x03), None);
+        assert_eq!(Compression::from_byte(0xFF), None);
     }
 
     #[test]
@@ -378,21 +541,36 @@ mod tests {
             compression: Some(Compression::Zlib as u8),
             base_nonce: Some("bm9uY2U=".to_string()),
             chunk_size: Some(262144),
+            chunk_offset: Some(524288),
+            content_key: Some("Y2s=".to_string()),
+            paired_id: Some("pair-1".to_string()),
+            asset_kind: Some("livePhotoStill".to_string()),
+            pair_role: Some("primary".to_string()),
         };
         let json = serde_json::to_string(&start).unwrap();
         assert!(json.contains("\"fileName\""));
         assert!(json.contains("\"baseNonce\""));
         assert!(json.contains("\"chunkSize\""));
+        assert!(json.contains("\"chunkOffset\":524288"));
+        assert!(json.contains("\"contentKey\":\"Y2s=\""));
+        assert!(json.contains("\"pairedId\":\"pair-1\""));
+        assert!(json.contains("\"assetKind\":\"livePhotoStill\""));
+        assert!(json.contains("\"pairRole\":\"primary\""));
         let parsed: BinaryFileStart = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.file_name, "photo.jpg");
         assert_eq!(parsed.compression, Some(0x01));
         assert_eq!(parsed.base_nonce, Some("bm9uY2U=".to_string()));
         assert_eq!(parsed.chunk_size, Some(262144));
+        assert_eq!(parsed.chunk_offset, Some(524288));
+        assert_eq!(parsed.content_key, Some("Y2s=".to_string()));
+        assert_eq!(parsed.paired_id, Some("pair-1".to_string()));
+        assert_eq!(parsed.asset_kind, Some("livePhotoStill".to_string()));
+        assert_eq!(parsed.pair_role, Some("primary".to_string()));
     }
 
     #[test]
     fn test_binary_file_start_json_minimal() {
-        // v2.2 optional fields absent → None
+        // v2.2+ optional fields absent → None
         let json = r#"{"fileName":"a.txt","size":1,"fileType":"text/plain"}"#;
         let parsed: BinaryFileStart = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.sha256, None);
@@ -400,6 +578,12 @@ mod tests {
         assert_eq!(parsed.compression, None);
         assert_eq!(parsed.base_nonce, None);
         assert_eq!(parsed.chunk_size, None);
+        assert_eq!(parsed.chunk_offset, None);
+        assert_eq!(parsed.content_key, None);
+        // None fields skipped on re-serialization (legacy 2.3 peer never sees them)
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(!json.contains("chunkOffset"));
+        assert!(!json.contains("contentKey"));
     }
 
     #[test]
@@ -430,11 +614,20 @@ mod tests {
         let parsed: BinaryPause = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.file_id, 3);
 
-        let resume = BinaryResume { window_size: 32 };
+        let resume = BinaryResume { window_size: 32, offset: Some(786432) };
         let json = serde_json::to_string(&resume).unwrap();
         assert!(json.contains("\"windowSize\":32"));
+        assert!(json.contains("\"offset\":786432"));
         let parsed: BinaryResume = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.window_size, 32);
+        assert_eq!(parsed.offset, Some(786432));
+
+        // Legacy 2.3 resume without offset → None, skipped on re-serialization
+        let parsed: BinaryResume = serde_json::from_str(r#"{"windowSize":16}"#).unwrap();
+        assert_eq!(parsed.window_size, 16);
+        assert_eq!(parsed.offset, None);
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(!json.contains("offset"));
 
         let error = BinaryError { message: "boom".to_string() };
         let json = serde_json::to_string(&error).unwrap();
@@ -453,6 +646,219 @@ mod tests {
                 let parsed: BinaryAck = Decoder::decode_json(&frame).unwrap();
                 assert_eq!(parsed.chunks_received, 5);
                 assert_eq!(parsed.window_size, 8);
+            }
+            _ => panic!("expected successful decode"),
+        }
+    }
+
+    #[test]
+    fn test_binary_manifest_start_json() {
+        let start = BinaryManifestStart {
+            sync_id: "sync1".to_string(),
+            root_name: "Documents".to_string(),
+            total_entries: 120,
+            cursor: 7,
+            manifest_hash: "abc123".to_string(),
+        };
+        let json = serde_json::to_string(&start).unwrap();
+        assert!(json.contains("\"syncId\":\"sync1\""));
+        assert!(json.contains("\"rootName\":\"Documents\""));
+        assert!(json.contains("\"totalEntries\":120"));
+        assert!(json.contains("\"cursor\":7"));
+        assert!(json.contains("\"manifestHash\":\"abc123\""));
+        let parsed: BinaryManifestStart = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.sync_id, "sync1");
+        assert_eq!(parsed.total_entries, 120);
+        assert_eq!(parsed.manifest_hash, "abc123");
+    }
+
+    #[test]
+    fn test_binary_manifest_entry_batch_json() {
+        // ManifestChunk (0x0D) carries a Vec<BinaryManifestEntry> batch
+        let batch = vec![
+            BinaryManifestEntry {
+                path: "docs/a.txt".to_string(),
+                size: 42,
+                mtime_ms: 1720000000000,
+                sha256: Some("deadbeef".to_string()),
+                is_dir: false,
+            },
+            BinaryManifestEntry {
+                path: "docs".to_string(),
+                size: 0,
+                mtime_ms: 1720000000000,
+                sha256: None,
+                is_dir: true,
+            },
+        ];
+        let json = serde_json::to_string(&batch).unwrap();
+        assert!(json.contains("\"mtimeMs\":1720000000000"));
+        assert!(json.contains("\"isDir\":true"));
+        let parsed: Vec<BinaryManifestEntry> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].sha256, Some("deadbeef".to_string()));
+        assert_eq!(parsed[1].sha256, None);
+        assert!(parsed[1].is_dir);
+    }
+
+    #[test]
+    fn test_binary_manifest_delta_json() {
+        let delta = BinaryManifestDelta {
+            sync_id: "sync1".to_string(),
+            base_cursor: 7,
+            new_cursor: 9,
+            ops: vec![
+                DeltaOp {
+                    op: "rename".to_string(),
+                    path: "old.txt".to_string(),
+                    new_path: Some("new.txt".to_string()),
+                    sha256: None,
+                    size: None,
+                    mtime_ms: None,
+                    is_dir: None,
+                },
+                DeltaOp {
+                    op: "modify".to_string(),
+                    path: "b.txt".to_string(),
+                    new_path: None,
+                    sha256: Some("cafe".to_string()),
+                    size: Some(64),
+                    mtime_ms: Some(1720000000001),
+                    is_dir: Some(false),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&delta).unwrap();
+        assert!(json.contains("\"baseCursor\":7"));
+        assert!(json.contains("\"newCursor\":9"));
+        assert!(json.contains("\"newPath\":\"new.txt\""));
+        let parsed: BinaryManifestDelta = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.ops.len(), 2);
+        assert_eq!(parsed.ops[0].new_path, Some("new.txt".to_string()));
+        assert_eq!(parsed.ops[1].size, Some(64));
+        // None fields skipped
+        assert!(!serde_json::to_string(&parsed.ops[0]).unwrap().contains("sha256"));
+    }
+
+    #[test]
+    fn test_binary_clipboard_json() {
+        let clip = BinaryClipboard {
+            kind: "image".to_string(),
+            mime: "image/png".to_string(),
+            file_name: "screenshot.png".to_string(),
+            sender: "FP".to_string(),
+            alias: "Mac".to_string(),
+            size: 20480,
+            sha256: Some("abc".to_string()),
+            encrypted: true,
+            base_nonce: Some("bm9uY2U=".to_string()),
+            chunk_size: Some(262144),
+        };
+        let json = serde_json::to_string(&clip).unwrap();
+        assert!(json.contains("\"fileName\":\"screenshot.png\""));
+        assert!(json.contains("\"baseNonce\":\"bm9uY2U=\""));
+        assert!(json.contains("\"chunkSize\":262144"));
+        let parsed: BinaryClipboard = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.kind, "image");
+        assert!(parsed.encrypted);
+        assert_eq!(parsed.base_nonce, Some("bm9uY2U=".to_string()));
+
+        // Unencrypted minimal form → optional fields None
+        let json = r#"{"kind":"file","mime":"text/plain","fileName":"a.txt","sender":"FP","alias":"Mac","size":1}"#;
+        let parsed: BinaryClipboard = serde_json::from_str(json).unwrap();
+        assert!(!parsed.encrypted);
+        assert_eq!(parsed.sha256, None);
+        assert_eq!(parsed.base_nonce, None);
+        assert_eq!(parsed.chunk_size, None);
+    }
+
+    #[test]
+    fn test_binary_handoff_json() {
+        let handoff = BinaryHandoff {
+            transfer_id: "t1".to_string(),
+            file_name: "video.mov".to_string(),
+            size: 1048576,
+            sha256: Some("abc".to_string()),
+            bytes_committed: 524288,
+            chunk_index: 2,
+            base_nonce: Some("bm9uY2U=".to_string()),
+            resume_token: "tok".to_string(),
+            target_fingerprint: Some("AA BB".to_string()),
+        };
+        let json = serde_json::to_string(&handoff).unwrap();
+        assert!(json.contains("\"transferId\":\"t1\""));
+        assert!(json.contains("\"bytesCommitted\":524288"));
+        assert!(json.contains("\"chunkIndex\":2"));
+        assert!(json.contains("\"resumeToken\":\"tok\""));
+        assert!(json.contains("\"targetFingerprint\":\"AA BB\""));
+        let parsed: BinaryHandoff = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.bytes_committed, 524288);
+        assert_eq!(parsed.resume_token, "tok");
+
+        // Broadcast handoff without target → None, skipped
+        let json = r#"{"transferId":"t1","fileName":"a.txt","size":1,"bytesCommitted":0,"chunkIndex":0,"resumeToken":"tok"}"#;
+        let parsed: BinaryHandoff = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.sha256, None);
+        assert_eq!(parsed.base_nonce, None);
+        assert_eq!(parsed.target_fingerprint, None);
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(!json.contains("targetFingerprint"));
+    }
+
+    #[test]
+    fn test_manifest_delta_frame_roundtrip() {
+        let delta = BinaryManifestDelta {
+            sync_id: "sync1".to_string(),
+            base_cursor: 1,
+            new_cursor: 2,
+            ops: vec![DeltaOp {
+                op: "delete".to_string(),
+                path: "gone.txt".to_string(),
+                new_path: None,
+                sha256: None,
+                size: None,
+                mtime_ms: None,
+                is_dir: None,
+            }],
+        };
+        let encoded = Encoder::encode_json(MessageType::ManifestDelta, 0, &delta).unwrap();
+        match Decoder::decode(&encoded) {
+            DecodeResult::Success { frame, consumed } => {
+                assert_eq!(frame.msg_type, MessageType::ManifestDelta);
+                assert_eq!(consumed, encoded.len());
+                let parsed: BinaryManifestDelta = Decoder::decode_json(&frame).unwrap();
+                assert_eq!(parsed.sync_id, "sync1");
+                assert_eq!(parsed.ops[0].op, "delete");
+                assert_eq!(parsed.ops[0].path, "gone.txt");
+            }
+            _ => panic!("expected successful decode"),
+        }
+    }
+
+    #[test]
+    fn test_handoff_frame_roundtrip() {
+        let handoff = BinaryHandoff {
+            transfer_id: "t1".to_string(),
+            file_name: "video.mov".to_string(),
+            size: 1048576,
+            sha256: None,
+            bytes_committed: 262144,
+            chunk_index: 1,
+            base_nonce: Some("bm9uY2U=".to_string()),
+            resume_token: "tok".to_string(),
+            target_fingerprint: None,
+        };
+        let encoded = Encoder::encode_json(MessageType::Handoff, 5, &handoff).unwrap();
+        assert_eq!(encoded[0], 0x10);
+        match Decoder::decode(&encoded) {
+            DecodeResult::Success { frame, consumed } => {
+                assert_eq!(frame.msg_type, MessageType::Handoff);
+                assert_eq!(frame.file_id, 5);
+                assert_eq!(consumed, encoded.len());
+                let parsed: BinaryHandoff = Decoder::decode_json(&frame).unwrap();
+                assert_eq!(parsed.transfer_id, "t1");
+                assert_eq!(parsed.bytes_committed, 262144);
+                assert_eq!(parsed.base_nonce, Some("bm9uY2U=".to_string()));
             }
             _ => panic!("expected successful decode"),
         }

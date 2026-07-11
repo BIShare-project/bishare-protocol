@@ -2,7 +2,7 @@
 pub struct Config;
 
 impl Config {
-    pub const VERSION: &str = "2.3";
+    pub const VERSION: &str = "2.4";
     pub const PROTOCOL_SCHEME: &str = "https";
     pub const SCHEME: &str = "bishare";
     pub const CODE_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -31,6 +31,13 @@ impl Config {
     pub const P2P_PROTOCOL_MIN_VERSION: &str = "2.3";
     pub const DEFAULT_STREAMS_PER_FILE: usize = 4;
 
+    // Premium features v2.4
+    pub const SYNC_PROTOCOL_MIN_VERSION: &str = "2.4";
+    pub const BROADCAST_PROTOCOL_MIN_VERSION: &str = "2.4";
+    pub const MEDIA_PROTOCOL_MIN_VERSION: &str = "2.4";
+    pub const CLIPBOARD_BINARY_MIN_VERSION: &str = "2.4";
+    pub const RESUME_OFFSET_MIN_VERSION: &str = "2.4";
+
     pub const COMPRESSIBLE_MIME_PREFIXES: &[&str] = &[
         "text/",
         "application/json",
@@ -54,9 +61,12 @@ pub struct Port;
 
 impl Port {
     pub const MAIN: u16 = 58317; // TCP HTTP
-    pub const QUIC: u16 = 58318; // UDP QUIC + Clipboard
+    pub const QUIC: u16 = 58318; // UDP QUIC (always-on HTE endpoint)
     pub const ROOM: u16 = 58319; // TCP Room HTTP
     pub const WEBDAV: u16 = 58320; // TCP WebDAV
+    /// Universal-clipboard sync — UDP. Its own port: the Dart clipboard datagram
+    /// channel must not share [`QUIC`], which the always-on QUIC endpoint binds.
+    pub const CLIPBOARD: u16 = 58321; // UDP clipboard announce
 }
 
 /// Bonjour/mDNS Service Types
@@ -107,6 +117,13 @@ impl ApiPath {
     pub const VERIFY_PIN: &str = "/api/v1/verify-pin";
     pub const GOODBYE: &str = "/api/v1/goodbye";
 
+    // Premium feature endpoints v2.4 (main port)
+    pub const CLIPBOARD: &str = "/api/v1/clipboard";
+    pub const SIGNAL: &str = "/api/v1/signal";
+    pub const SYNC: &str = "/api/v1/sync";
+    pub const MANIFEST: &str = "/api/v1/manifest";
+    pub const BROADCAST_PREPARE: &str = "/api/v1/broadcast/prepare";
+
     // Room endpoints (room port)
     pub const ROOM_INFO: &str = "/api/v1/room/info";
     pub const ROOM_JOIN: &str = "/api/v1/room/join";
@@ -116,6 +133,7 @@ impl ApiPath {
     pub const ROOM_KICKED: &str = "/api/v1/room/kicked";
     pub const ROOM_MEMBER_JOINED: &str = "/api/v1/room/member-joined";
     pub const ROOM_MEMBER_LEFT: &str = "/api/v1/room/member-left";
+    pub const ROOM_TREE: &str = "/api/v1/room/tree";
 }
 
 /// File Categories
@@ -170,9 +188,24 @@ mod tests {
 
     #[test]
     fn test_protocol_versions() {
-        assert_eq!(Config::VERSION, "2.3");
+        assert_eq!(Config::VERSION, "2.4");
         assert_eq!(Config::P2P_PROTOCOL_MIN_VERSION, "2.3");
         assert_eq!(Config::DEFAULT_STREAMS_PER_FILE, 4);
+        assert_eq!(Config::SYNC_PROTOCOL_MIN_VERSION, "2.4");
+        assert_eq!(Config::BROADCAST_PROTOCOL_MIN_VERSION, "2.4");
+        assert_eq!(Config::MEDIA_PROTOCOL_MIN_VERSION, "2.4");
+        assert_eq!(Config::CLIPBOARD_BINARY_MIN_VERSION, "2.4");
+        assert_eq!(Config::RESUME_OFFSET_MIN_VERSION, "2.4");
+    }
+
+    #[test]
+    fn test_v24_api_paths() {
+        assert_eq!(ApiPath::CLIPBOARD, "/api/v1/clipboard");
+        assert_eq!(ApiPath::SIGNAL, "/api/v1/signal");
+        assert_eq!(ApiPath::SYNC, "/api/v1/sync");
+        assert_eq!(ApiPath::MANIFEST, "/api/v1/manifest");
+        assert_eq!(ApiPath::BROADCAST_PREPARE, "/api/v1/broadcast/prepare");
+        assert_eq!(ApiPath::ROOM_TREE, "/api/v1/room/tree");
     }
 
     #[test]
@@ -181,6 +214,7 @@ mod tests {
         assert_eq!(Port::QUIC, 58318);
         assert_eq!(Port::ROOM, 58319);
         assert_eq!(Port::WEBDAV, 58320);
+        assert_eq!(Port::CLIPBOARD, 58321);
     }
 
     #[test]
