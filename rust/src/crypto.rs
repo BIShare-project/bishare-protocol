@@ -184,6 +184,29 @@ impl Default for Encryption {
     }
 }
 
+// ── Content-key wrapping (v2.4 broadcast) ──
+
+/// Envelope size for a wrapped content key: nonce(12) + ciphertext(32) + tag(16)
+pub const WRAPPED_CONTENT_KEY_SIZE: usize =
+    CryptoConst::GCM_NONCE_SIZE + CryptoConst::AES_KEY_SIZE + CryptoConst::GCM_TAG_BITS / 8; // 60
+
+/// Wrap a 32-byte content key under a KEK (AES-256-GCM).
+/// KEK = `derive_shared_key(peer_pub)`. Returns 60-byte envelope: nonce(12) + ct(32) + tag(16)
+pub fn wrap_content_key(ck: &[u8; 32], kek: &[u8; 32]) -> Option<Vec<u8>> {
+    Encryption::encrypt(ck, kek)
+}
+
+/// Unwrap a 60-byte envelope back into the 32-byte content key
+pub fn unwrap_content_key(envelope: &[u8], kek: &[u8; 32]) -> Option<[u8; 32]> {
+    if envelope.len() != WRAPPED_CONTENT_KEY_SIZE {
+        return None;
+    }
+    let plain = Encryption::decrypt(envelope, kek)?;
+    let mut ck = [0u8; 32];
+    ck.copy_from_slice(plain.get(..32)?);
+    Some(ck)
+}
+
 /// Derive per-chunk nonce: baseNonce XOR pad(chunkIndex, 12)
 /// XOR chunkIndex (8 bytes big-endian) into bytes [4..12] of base nonce
 fn derive_chunk_nonce(base_nonce: &[u8; 12], chunk_index: u64) -> [u8; 12] {
@@ -353,6 +376,57 @@ mod tests {
         let n2 = Encryption::generate_base_nonce();
         assert_eq!(n1.len(), 12);
         assert_ne!(n1, n2);
+    }
+
+    // ── Content-key wrapping vectors (v2.4 broadcast) ──
+
+    /// Envelope of WRAPPED_CK under kek=vector_key() with nonce=vector_base_nonce():
+    /// nonce(12) + ct(32) + tag(16) = 60 bytes
+    const WRAPPED_CK_HEX: &str = "000102030405060708090a0b6723f438e1c0e43ca568bda09dc45642b3e7b507c44e694b005edfbe21543e8d74943e2a269bf4fe0b89d0e48c7cdd01";
+
+    /// Vector content key: 32 ascending bytes 20..3f
+    fn vector_content_key() -> [u8; 32] {
+        core::array::from_fn(|i| 0x20 + i as u8)
+    }
+
+    #[test]
+    fn test_unwrap_content_key_vector() {
+        // Fixed regression vector — envelope built with the vector base nonce must
+        // always unwrap to the same content key (byte-exact across platforms)
+        let envelope = hex_decode(WRAPPED_CK_HEX);
+        assert_eq!(envelope.len(), WRAPPED_CONTENT_KEY_SIZE);
+        let ck = unwrap_content_key(&envelope, &vector_key()).unwrap();
+        assert_eq!(ck, vector_content_key());
+    }
+
+    #[test]
+    fn test_wrap_content_key_roundtrip() {
+        let ck = vector_content_key();
+        let kek = vector_key();
+        let envelope = wrap_content_key(&ck, &kek).unwrap();
+        assert_eq!(envelope.len(), 60);
+        assert_eq!(unwrap_content_key(&envelope, &kek), Some(ck));
+        // Random nonce → two wraps of the same key differ
+        let envelope2 = wrap_content_key(&ck, &kek).unwrap();
+        assert_ne!(envelope, envelope2);
+        assert_eq!(unwrap_content_key(&envelope2, &kek), Some(ck));
+    }
+
+    #[test]
+    fn test_unwrap_content_key_wrong_kek_fails() {
+        let envelope = wrap_content_key(&vector_content_key(), &vector_key()).unwrap();
+        let wrong_kek = [0xFFu8; 32];
+        assert_eq!(unwrap_content_key(&envelope, &wrong_kek), None);
+    }
+
+    #[test]
+    fn test_unwrap_content_key_wrong_length_fails() {
+        let kek = vector_key();
+        let envelope = wrap_content_key(&vector_content_key(), &kek).unwrap();
+        // Anything other than the exact 60-byte envelope is rejected
+        assert_eq!(unwrap_content_key(&envelope[..59], &kek), None);
+        assert_eq!(unwrap_content_key(&[0u8; 61], &kek), None);
+        assert_eq!(unwrap_content_key(&[], &kek), None);
     }
 
     #[test]
