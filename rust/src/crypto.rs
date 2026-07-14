@@ -207,6 +207,28 @@ pub fn unwrap_content_key(envelope: &[u8], kek: &[u8; 32]) -> Option<[u8; 32]> {
     Some(ck)
 }
 
+// ── Content-addressed E2E sync blobs (Tahap 4 §7.1) ──
+
+/// Deterministic 12-byte AES-GCM base nonce for a content-addressed sync blob:
+/// `HKDF-SHA256(salt = "bishare-sync-blob-nonce", ikm = pair_key,
+/// info = plaintext_sha256_hex)` → the first 12 bytes.
+///
+/// Deterministic in `(pair_key, content)` ON PURPOSE: re-encrypting the same
+/// file yields byte-identical ciphertext, so its ciphertext hash is stable and
+/// `POST /files/check-exists` dedup + idempotent upload-retry survive E2E (the
+/// property that made Q2=yes viable without a backend change). Distinct content
+/// ⇒ distinct `plaintext_sha256_hex` ⇒ distinct nonce (SHA-256 collision
+/// resistance), so a fixed `pair_key` never reuses a `(key, nonce)` pair across
+/// different blobs — the one invariant AES-GCM must never violate. Combine with
+/// `encrypt_chunk(_, pair_key, chunk_index, base_nonce)` for multi-chunk blobs.
+pub fn derive_blob_base_nonce(pair_key: &[u8; 32], plaintext_sha256_hex: &str) -> [u8; 12] {
+    let hk = Hkdf::<Sha256>::new(Some(b"bishare-sync-blob-nonce"), pair_key);
+    let mut nonce = [0u8; 12];
+    hk.expand(plaintext_sha256_hex.as_bytes(), &mut nonce)
+        .expect("HKDF-SHA256 expand of 12 bytes is always within output length");
+    nonce
+}
+
 /// Derive per-chunk nonce: baseNonce XOR pad(chunkIndex, 12)
 /// XOR chunkIndex (8 bytes big-endian) into bytes [4..12] of base nonce
 fn derive_chunk_nonce(base_nonce: &[u8; 12], chunk_index: u64) -> [u8; 12] {
@@ -434,5 +456,85 @@ mod tests {
         let key = vector_key();
         assert!(Encryption::decrypt(&[0u8; 10], &key).is_none());
         assert!(Encryption::decrypt_chunk(&[0u8; 27], &key, 0, &vector_base_nonce()).is_none());
+    }
+
+    // ── Tahap 4 §7.1 — E2E content-addressed sync blobs (M0 validation) ──
+    // Proves the cloud-path crypto composes ENTIRELY from shipped primitives
+    // (wrap/unwrap_content_key v2.4 + encrypt_chunk v2.2) plus one deterministic
+    // nonce, so Q2=yes needs no new audited crypto and no backend change.
+
+    /// Pairing bootstrap: device A mints the pair key and wraps it to device B's
+    /// identity pubkey; B recovers it with its own derived KEK. The pair key
+    /// never touches the server — exactly the §7.1 LAN/QR key exchange.
+    #[test]
+    fn m0_sync_pairkey_wrap_bootstrap_over_x25519() {
+        let a = Encryption::from_private_key(&[0x11; 32]);
+        let b = Encryption::from_private_key(&[0x22; 32]);
+        let pair_key: [u8; 32] = core::array::from_fn(|i| (i as u8) ^ 0xA5);
+
+        let kek_a = a.derive_shared_key(&b.public_key_base64()).unwrap();
+        let envelope = wrap_content_key(&pair_key, &kek_a).unwrap();
+        assert_eq!(envelope.len(), WRAPPED_CONTENT_KEY_SIZE);
+
+        // B derives the SAME shared key from A's pubkey and recovers the pair key.
+        let kek_b = b.derive_shared_key(&a.public_key_base64()).unwrap();
+        assert_eq!(unwrap_content_key(&envelope, &kek_b).unwrap(), pair_key);
+
+        // A third device cannot unwrap what was sealed to B.
+        let stranger = Encryption::from_private_key(&[0x33; 32]);
+        let kek_s = stranger.derive_shared_key(&a.public_key_base64()).unwrap();
+        assert_eq!(unwrap_content_key(&envelope, &kek_s), None);
+    }
+
+    /// Deterministic nonce ⇒ identical ciphertext for identical content ⇒
+    /// check-exists dedup/idempotent-retry survive E2E; and it round-trips.
+    #[test]
+    fn m0_sync_blob_deterministic_idempotent_and_roundtrips() {
+        let pair_key = [0x7cu8; 32];
+        let plaintext = b"the quick brown fox jumps over the lazy dog, and then again";
+        let sha = Encryption::sha256_hex(plaintext);
+
+        let n1 = derive_blob_base_nonce(&pair_key, &sha);
+        let n2 = derive_blob_base_nonce(&pair_key, &sha);
+        assert_eq!(n1, n2, "nonce is deterministic in (pairKey, content)");
+
+        let c1 = Encryption::encrypt_chunk(plaintext, &pair_key, 0, &n1).unwrap();
+        let c2 = Encryption::encrypt_chunk(plaintext, &pair_key, 0, &n2).unwrap();
+        assert_eq!(c1, c2, "same content re-encrypts byte-identically");
+        // ⇒ the content-addressed blob name (ciphertext hash) is stable.
+        assert_eq!(Encryption::sha256_hex(&c1), Encryption::sha256_hex(&c2));
+
+        let back = Encryption::decrypt_chunk(&c1, &pair_key, 0, &n1).unwrap();
+        assert_eq!(back, plaintext, "round-trips to the original bytes");
+    }
+
+    /// Distinct content (or distinct pair) ⇒ distinct nonce: no (key, nonce)
+    /// reuse across blobs, the one invariant AES-GCM must never break.
+    #[test]
+    fn m0_sync_blob_distinct_content_distinct_nonce() {
+        let pair_key = [0x7cu8; 32];
+        let sha_a = Encryption::sha256_hex(b"content A");
+        let sha_b = Encryption::sha256_hex(b"content B");
+        assert_ne!(
+            derive_blob_base_nonce(&pair_key, &sha_a),
+            derive_blob_base_nonce(&pair_key, &sha_b)
+        );
+        // Cross-pair isolation: same content under a different pair key diverges.
+        assert_ne!(
+            derive_blob_base_nonce(&pair_key, &sha_a),
+            derive_blob_base_nonce(&[0x01u8; 32], &sha_a)
+        );
+    }
+
+    /// A wrong pair key cannot open a blob even with the correct nonce — GCM
+    /// authentication fails closed (no silent garbage plaintext).
+    #[test]
+    fn m0_sync_blob_wrong_key_fails_closed() {
+        let pair_key = [0x7cu8; 32];
+        let wrong = [0x7du8; 32];
+        let pt = b"secret sync payload";
+        let nonce = derive_blob_base_nonce(&pair_key, &Encryption::sha256_hex(pt));
+        let ct = Encryption::encrypt_chunk(pt, &pair_key, 0, &nonce).unwrap();
+        assert!(Encryption::decrypt_chunk(&ct, &wrong, 0, &nonce).is_none());
     }
 }
