@@ -8,7 +8,7 @@ A small, dependency-light **Rust** crate that implements the cryptography, binar
 framing, and shared data models used to move files securely between devices —
 iPhone, Android, Mac, Windows, and Linux.
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Rust](https://img.shields.io/badge/Rust-2024_edition-000000?logo=rust&logoColor=white)
 ![Version](https://img.shields.io/badge/protocol-v2.4-2563eb)
 ![Tests](https://img.shields.io/badge/tests-75-16a34a)
@@ -95,7 +95,7 @@ cargo test        # 75 unit tests: crypto round-trips, framing, models
 
 ## Protocol facts
 
-- **Version:** 2.4 · **Edition:** Rust 2024 · **License:** MIT
+- **Version:** 2.4 · **Edition:** Rust 2024 · **License:** Apache 2.0
 - **Default ports:** `58317` (TCP/HTTP transfer) · `58318` (UDP/QUIC endpoint)
 - **Default chunk size:** 256 KiB (64 KiB–1 MiB range)
 
@@ -116,7 +116,7 @@ public issue.
 
 ## License
 
-Released under the [MIT License](LICENSE) — free to use, modify, and distribute.
+Licensed under the [Apache License 2.0](LICENSE): free to use, modify and distribute. Keep the [NOTICE](NOTICE) file with any copy; the BIShare name and logo are not covered by the license (see [TRADEMARKS.md](TRADEMARKS.md)). Releases before 7 October 2026 were MIT-licensed.
 
 ---
 
